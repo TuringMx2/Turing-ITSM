@@ -1,0 +1,22 @@
+{
+  "name": "turing-itsm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Turing ITSM modular monolith workspace for customer portal, admin console, API, and shared packages.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @turing-itsm/web",
+    "dev:web": "npm run dev --workspace @turing-itsm/web",
+    "dev:api": "cd apps/api && uvicorn app.main:app --reload",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

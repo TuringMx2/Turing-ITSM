@@ -1,0 +1,1 @@
+"""tickets domain module."""
