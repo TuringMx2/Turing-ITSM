@@ -16,24 +16,6 @@ const STORAGE_KEY = "turing_itsm_mock_session";
 
 export const testUsers: MockUser[] = [
   {
-    id: "usr_customer_user",
-    email: "customer.user@test.com",
-    name: "Customer User Demo",
-    password: "password123",
-    role: "customer_user",
-    tenantId: "tenant_acme",
-    tenantName: "Cliente Demo A",
-  },
-  {
-    id: "usr_customer_manager",
-    email: "customer.manager@test.com",
-    name: "Customer Manager Demo",
-    password: "password123",
-    role: "customer_manager",
-    tenantId: "tenant_acme",
-    tenantName: "Cliente Demo A",
-  },
-  {
     id: "usr_support_agent",
     email: "support.agent@test.com",
     name: "Support Agent Demo",

@@ -1,4 +1,4 @@
-export type AppRole = "customer_user" | "customer_manager" | "support_agent" | "admin";
+export type AppRole = "support_agent" | "admin";
 export type UserRole = AppRole;
 
 export type TicketPriority = "low" | "moderate" | "high" | "urgent";
