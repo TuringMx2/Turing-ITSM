@@ -242,3 +242,25 @@ export const rolePermissions: Record<Role, Permission[]> = {
 export function getModuleForRole(role: Role, slug: string) {
 	return roleModules[role].find((module) => module.slug === slug);
 }
+
+// Workers helpers -----------------------------------------------------------
+export function isAdmin(role: Role): boolean {
+	return role === "admin";
+}
+
+export function canAccessAdminRoute(role: Role): boolean {
+	return isAdmin(role);
+}
+
+export function canManageProjects(role: Role): boolean {
+	return isAdmin(role);
+}
+
+export function canManageTasks(role: Role): boolean {
+	// admin can manage all; support_agent managed via project membership in RLS + server actions
+	return true;
+}
+
+export function hasPermission(role: Role, permission: Permission): boolean {
+	return rolePermissions[role].includes(permission);
+}
