@@ -1,6 +1,48 @@
 export type AppRole = "support_agent" | "admin";
 export type UserRole = AppRole;
 
+export type TaskStatus = "todo" | "doing" | "done" | "blocked";
+export type TaskPriority = "low" | "medium" | "high" | "urgent";
+
+export interface Project {
+  id: string;
+  name: string;
+  description?: string | null;
+  createdBy: string;
+  createdAt: string;
+  archivedAt?: string | null;
+}
+
+export interface ProjectMember {
+  projectId: string;
+  userId: string;
+  createdAt: string;
+}
+
+export interface DailyCheckin {
+  id: string;
+  userId: string;
+  date: string;
+  q1Yesterday: string;
+  q2Today: string;
+  q3Blockers?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Task {
+  id: string;
+  projectId: string;
+  title: string;
+  description?: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  assigneeId?: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type TicketPriority = "low" | "moderate" | "high" | "urgent";
 
 export type TicketStatus =
