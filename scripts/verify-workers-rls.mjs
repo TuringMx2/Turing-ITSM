@@ -49,10 +49,6 @@ if (existsSync(migration)) {
     "project_members_select_scoped",
     "project_members_insert_admin",
     "project_members_delete_admin",
-    "daily_checkins_insert_own",
-    "daily_checkins_select_own_or_admin",
-    "daily_checkins_update_own_today",
-    "daily_checkins_delete_admin",
     "tasks_select_scoped",
     "tasks_insert_member",
     "tasks_update_member",
@@ -75,7 +71,6 @@ if (existsSync(validation)) {
   check("createTaskSchema", v.includes("createTaskSchema"));
   check("updateTaskStatusSchema", v.includes("updateTaskStatusSchema"));
   check("listTasksSchema", v.includes("listTasksSchema"));
-  check("dailyCheckinSchema", v.includes("dailyCheckinSchema"));
   check("createProjectSchema", v.includes("createProjectSchema"));
 }
 

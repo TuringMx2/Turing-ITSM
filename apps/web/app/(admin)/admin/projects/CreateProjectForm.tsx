@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { createProject } from "@/app/actions/projects";
 import { useRouter } from "next/navigation";
 
-export default function CreateProjectForm() {
+export default function CreateProjectForm({ teamId }: { teamId: string }) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -26,7 +26,7 @@ export default function CreateProjectForm() {
       return;
     }
     startTransition(async () => {
-      const res = await createProject({ name: trimmedName, description: description.trim() || null });
+      const res = await createProject({ teamId, name: trimmedName, description: description.trim() || null });
       if (res.error) setError(res.error);
       else {
         setSuccess("Project created.");
@@ -40,7 +40,7 @@ export default function CreateProjectForm() {
   return (
     <form onSubmit={onSubmit} className="card" style={{ display: "grid", gap: 12 }}>
       <h2 style={{ margin: 0, fontSize: 16 }}>Create project</h2>
-      <p className="muted small-text" style={{ margin: 0 }}>Admin-only. RLS enforces creator = admin.</p>
+      <p className="muted small-text" style={{ margin: 0 }}>Superadmin-only. RLS enforces tenant-scoped administrator access.</p>
       <label style={{ display: "grid", gap: 6 }}>
         <span style={{ fontWeight: 700, fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase" }}>Name *</span>
         <input value={name} onChange={(e) => setName(e.target.value)} required minLength={2} maxLength={100} placeholder="e.g. Customer Onboarding" style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid #d7deea" }} />

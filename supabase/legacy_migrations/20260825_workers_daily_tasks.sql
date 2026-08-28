@@ -118,20 +118,7 @@ alter table public.project_members enable row level security;
 alter table public.daily_checkins enable row level security;
 alter table public.tasks enable row level security;
 
--- Helper already exists from initial migration: public.is_admin() boolean security definer
--- Ensure it exists for fresh DBs that may not have run initial migration variant:
-create or replace function public.is_admin()
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select coalesce((select role from public.profiles where id = auth.uid()) = 'admin', false)
-$$;
-
-revoke execute on function public.is_admin() from public, anon;
-grant execute on function public.is_admin() to authenticated;
+-- is_admin() already exists from initial migration (20260806). No re-definition needed.
 
 do $$
 begin

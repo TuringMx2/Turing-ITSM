@@ -1,9 +1,11 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import { getCurrentUser } from "@/lib/auth";
-import { getProject, listMembers } from "@/app/actions/projects";
-import { listTasks } from "@/app/actions/tasks";
+import { getCurrentInternalUser } from "@/lib/auth";
+import { getProject } from "@/app/actions/projects";
+import { getTaskBoard } from "@/app/actions/tasks";
 import { Board } from "@/components/board/Board";
+import { AppShell } from "@/components/app-shell";
+import { isSuperAdmin } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -11,63 +13,75 @@ type Params = { projectId: string };
 
 export default async function AdminProjectBoardPage({ params }: { params: Promise<Params> }) {
   const { projectId } = await params;
-  const user = await getCurrentUser();
+  const user = await getCurrentInternalUser();
   if (!user) redirect("/login");
-  if (user.role !== "admin") redirect("/workspace/dashboard");
+  if (!isSuperAdmin(user.role)) redirect("/workspace/dashboard");
 
   const projectRes = await getProject(projectId);
   if (projectRes.error) return notFound();
   const project = projectRes.data as unknown as { id: string; name: string; description: string | null; created_at: string };
 
-  const membersRes = await listMembers(projectId);
-  const members = (membersRes.data as unknown as Array<{ user_id: string; created_at: string }>) ?? [];
-
-  const tasksRes = await listTasks({ projectId, page: 1, pageSize: 100 });
-  const tasksData = tasksRes.data as unknown as { rows: Array<{ id: string; project_id: string; title: string; description: string | null; status: "todo" | "doing" | "done" | "blocked"; priority: "low" | "medium" | "high" | "urgent"; assignee_id: string | null; created_by: string; created_at: string; updated_at: string }> } | undefined;
-  const tasks = tasksData?.rows ?? [];
-  const tasksError = tasksRes.error;
+  const boardResult = await getTaskBoard(projectId);
+  const board = boardResult.data;
 
   return (
-    <main className="page-shell">
-      <div className="module-page" style={{ display: "grid", gap: 24 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+    <AppShell moduleSlug="projects" user={user}>
+      <section className="module-page page-stack board-page board-page-admin">
+        <header className="page-header board-page-header">
           <div>
-            <p className="eyebrow">Admin · Project board</p>
-            <h1 style={{ margin: "4px 0 4px" }}>{project.name}</h1>
-            <p className="muted small-text" style={{ margin: 0 }}>{project.description || "No description"} · {members.length} member(s)</p>
+            <p className="eyebrow">Administración · Tablero</p>
+            <h1>{project.name}</h1>
+            <p className="muted small-text page-description">{project.description || "Sin descripción"}</p>
           </div>
-          <Link href="/admin/projects" className="primary-link" style={{ background: "#fff", color: "#172033", border: "1px solid #d7deea" }}>
-            Back to projects
+          <Link href="/projects" className="secondary-button board-page-back-link">
+            Volver a proyectos
           </Link>
-        </div>
+        </header>
 
-        <section className="card" style={{ display: "grid", gap: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <h2 style={{ margin: 0, fontSize: 15 }}>Kanban board · {tasks.length} card(s)</h2>
-            <span className="muted small-text">Drag cards between columns — calls updateTaskStatus. Admin can delete cards.</span>
-          </div>
-          {tasksError ? (
-            <p style={{ margin: 0, background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", borderRadius: 10, padding: 10, fontSize: 12 }}>{tasksError}</p>
+        <section className="card board-page-workspace" aria-labelledby="board-page-title">
+          <header className="section-heading board-page-toolbar">
+            <h2 id="board-page-title">Tareas</h2>
+            {board ? <span className="count-pill task-count">{board.tasks.length}</span> : null}
+            {board ? (
+              <span className="muted small-text board-page-status">
+                {board.readOnly ? "Proyecto archivado · solo lectura" : "Proyecto activo"}
+              </span>
+            ) : null}
+          </header>
+          {boardResult.error ? <p className="form-error board-page-error" role="alert">No pudimos cargar el tablero. {boardResult.error}</p> : null}
+          {board ? (
+            <Board
+              key={JSON.stringify([board.columns, board.tasks, board.members, board.readOnly])}
+              projectId={project.id}
+              initialColumns={board.columns}
+              initialTasks={board.tasks}
+              members={board.members}
+              readOnly={board.readOnly}
+            />
           ) : null}
-          <Board projectId={project.id} initialTasks={tasks as unknown as never} isAdmin />
-          <p className="muted small-text" style={{ margin: 0 }}>
-            Project ID <span style={{ fontFamily: "monospace" }}>{project.id}</span> · Use Admin Projects page to manage members. Create cards with “+ Add” per column.
+          <p className="muted small-text board-page-help">
+            Gestioná los accesos del proyecto desde Roles y permisos.
           </p>
         </section>
 
-        <section className="card" style={{ display: "grid", gap: 8 }}>
-          <h3 style={{ margin: 0, fontSize: 14 }}>Members</h3>
-          {members.length === 0 ? (
-            <p className="muted small-text" style={{ margin: 0 }}>No members. Add from the projects list.</p>
+        <section className="card project-members" aria-labelledby="project-members-title">
+          <header className="section-heading project-members-header">
+            <h2 id="project-members-title">Integrantes</h2>
+            <span className="count-pill project-member-count">{board?.members.length ?? 0}</span>
+          </header>
+          {!board || board.members.length === 0 ? (
+            <p className="empty-state project-members-empty" role="status">
+              Este proyecto todavía no tiene integrantes. Agregalos desde la lista de proyectos.
+            </p>
           ) : (
-            <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
-              {members.map((m) => (
-                <li key={m.user_id} style={{ fontFamily: "monospace" }}>{m.user_id}</li>
+            <ul className="member-list project-member-list">
+              {board.members.map((member) => (
+                <li key={member.id}>{member.full_name || member.email}</li>
               ))}
             </ul>
           )}
         </section>
-      </div>
-    </main>
+      </section>
+    </AppShell>
   );
 }

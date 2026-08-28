@@ -1,5 +1,16 @@
 import { z } from "zod";
 
+export const FULL_NAME_MAX_LENGTH = 160;
+
+export function normalizeFullName(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+export const fullNameSchema = z
+  .string()
+  .transform(normalizeFullName)
+  .pipe(z.string().min(1).max(FULL_NAME_MAX_LENGTH));
+
 export const ticketPrioritySchema = z.enum(["low", "moderate", "high", "urgent"]);
 
 export const ticketAttachmentInputSchema = z.object({
@@ -36,9 +47,156 @@ export const updateDailyCheckinSchema = dailyCheckinSchema.partial().extend({
   id: z.string().uuid().optional(),
 });
 
+// Daily runs ------------------------------------------------------------------
+const dailyEntityIdSchema = z.string().trim().toLowerCase().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+const dailyLocalTimeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/);
+const dailyWeekdaySchema = z.coerce.number().int().min(1).max(7);
+
+export const createDailyQuestionSchema = z.object({
+  questionText: z.string().trim().min(3).max(500),
+});
+
+export const deactivateDailyQuestionSchema = z.object({
+  questionId: dailyEntityIdSchema,
+  confirmation: z.literal("true"),
+});
+
+export const teamDailyScheduleSchema = z.object({
+  teamId: dailyEntityIdSchema,
+  timezoneName: z.string().trim().min(1).max(100),
+  localTime: dailyLocalTimeSchema,
+  weekdays: z
+    .array(dailyWeekdaySchema)
+    .min(1)
+    .max(7)
+    .refine((values) => new Set(values).size === values.length),
+  responseWindowMinutes: z.coerce.number().int().min(1).max(10080),
+  isActive: z.boolean(),
+});
+
+export const teamDailyQuestionsSchema = z.object({
+  teamId: dailyEntityIdSchema,
+  questionIds: z
+    .array(dailyEntityIdSchema)
+    .max(3)
+    .refine((values) => new Set(values).size === values.length),
+});
+
+export const generateDailyRunSchema = z.object({
+  teamId: dailyEntityIdSchema,
+  localDate: z.string().date(),
+});
+
+export const submitDailyResponseSchema = z.object({
+  runIds: z.array(dailyEntityIdSchema).min(1).max(100).refine((values) => new Set(values).size === values.length),
+  answers: z
+    .array(
+      z.object({
+        questionId: dailyEntityIdSchema,
+        answer: z.string().trim().min(1).max(4000),
+      }),
+    )
+    .min(1)
+    .max(300)
+    .refine((values) => new Set(values.map((value) => value.questionId)).size === values.length),
+});
+
 export const createProjectSchema = z.object({
   name: z.string().trim().min(2).max(100),
   description: z.string().trim().max(1000).optional().nullable(),
+});
+
+const organizationIdSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+const organizationDescriptionSchema = z
+  .string()
+  .trim()
+  .max(1000)
+  .transform((value) => value || null);
+
+export const createTeamSchema = z.object({
+  name: z.string().trim().min(2).max(100),
+  description: organizationDescriptionSchema,
+});
+
+export const updateTeamSchema = createTeamSchema.extend({
+  teamId: organizationIdSchema,
+});
+
+export const teamIdSchema = z.object({
+  teamId: organizationIdSchema,
+});
+
+export const createOrganizationProjectSchema = createTeamSchema.extend({
+  teamId: organizationIdSchema,
+});
+
+export const updateOrganizationProjectSchema = createTeamSchema.extend({
+  projectId: organizationIdSchema,
+});
+
+export const projectIdSchema = z.object({
+  projectId: organizationIdSchema,
+});
+
+export const teamMembershipSchema = z.object({
+  teamId: organizationIdSchema,
+  userId: organizationIdSchema,
+});
+
+export const projectMembershipSchema = z.object({
+  projectId: organizationIdSchema,
+  userId: organizationIdSchema,
+});
+
+export const staffAccessSchema = z.object({
+  userId: organizationIdSchema,
+  teamId: organizationIdSchema,
+  projectId: organizationIdSchema,
+});
+
+const optionalOrganizationIdSchema = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  organizationIdSchema.optional(),
+);
+
+export const createInternalMemberSchema = z.object({
+  email: z.string().trim().email().max(254).transform((value) => value.toLowerCase()),
+  password: z.string().min(8).max(128),
+  role: z.enum(["admin", "support_agent", "superadmin"]),
+  teamId: optionalOrganizationIdSchema,
+  projectId: optionalOrganizationIdSchema,
+});
+
+const optionalPasswordSchema = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.string().min(8).max(128).optional(),
+);
+
+export const updateInternalMemberSchema = z.object({
+  userId: organizationIdSchema,
+  email: z.string().trim().email().max(254).transform((value) => value.toLowerCase()),
+  password: optionalPasswordSchema,
+  role: z.enum(["admin", "support_agent", "superadmin"]),
+});
+
+export const internalMemberIdSchema = z.object({
+  userId: organizationIdSchema,
+});
+
+export const deactivateInternalMemberSchema = internalMemberIdSchema.extend({
+  confirmation: z.literal("true"),
+});
+
+export const deleteInternalMemberSchema = internalMemberIdSchema.extend({
+  confirmation: z.literal("true"),
+});
+
+export const removeProjectMembershipSchema = projectMembershipSchema.extend({
+  cascadeAcknowledged: z.literal("true"),
 });
 
 export const updateProjectSchema = createProjectSchema.partial().extend({
@@ -75,6 +233,61 @@ export const listDailyCheckinsSchema = z.object({
   pageSize: z.number().int().min(1).max(100).optional().default(20),
 });
 
+export const createBoardTaskSchema = z.object({
+  projectId: organizationIdSchema,
+  columnId: organizationIdSchema,
+  title: z.string().trim().min(1).max(200),
+  description: z.string().trim().min(1).max(8000),
+  dueDate: z.string().date(),
+  priority: taskPrioritySchema.default("medium"),
+  assigneeIds: z.array(organizationIdSchema).max(100).default([]),
+});
+
+export const updateBoardTaskSchema = createBoardTaskSchema.omit({ projectId: true }).extend({
+  taskId: organizationIdSchema,
+});
+
+export const moveTaskSchema = z.object({
+  taskId: organizationIdSchema,
+  targetColumnId: organizationIdSchema,
+  targetIndex: z.number().int().min(0).max(10000),
+});
+
+export const taskIdInputSchema = z.object({ taskId: organizationIdSchema });
+
+export const createWorkflowColumnSchema = z.object({
+  projectId: organizationIdSchema,
+  name: z.string().trim().min(1).max(80),
+});
+
+export const renameWorkflowColumnSchema = z.object({
+  columnId: organizationIdSchema,
+  name: z.string().trim().min(1).max(80),
+});
+
+export const reorderWorkflowColumnSchema = z.object({
+  columnId: organizationIdSchema,
+  direction: z.enum(["left", "right"]),
+});
+
+export const workflowColumnIdSchema = z.object({ columnId: organizationIdSchema });
+
+export const createTaskCommentSchema = z.object({
+  taskId: organizationIdSchema,
+  body: z.string().trim().min(1).max(8000),
+});
+
+export const taskAttachmentMetadataSchema = z.object({
+  taskId: organizationIdSchema,
+  fileName: z.string().trim().min(1).max(255),
+  mimeType: z.string().trim().max(255),
+  sizeBytes: z.number().int().min(1).max(10485760),
+});
+
+export const taskAttachmentIdSchema = z.object({
+  attachmentId: organizationIdSchema,
+});
+
 export const listTasksSchema = z.object({
   projectId: z.string().uuid().optional(),
   status: taskStatusSchema.optional(),
@@ -84,7 +297,20 @@ export const listTasksSchema = z.object({
   pageSize: z.number().int().min(1).max(100).optional().default(20),
 });
 
+export const listBoardTasksSchema = z.object({
+  projectId: organizationIdSchema,
+  columnId: organizationIdSchema.optional(),
+  priority: taskPrioritySchema.optional(),
+  page: z.number().int().min(1).optional().default(1),
+  pageSize: z.number().int().min(1).max(100).optional().default(20),
+});
+
 export type DailyCheckinInput = z.infer<typeof dailyCheckinSchema>;
+export type CreateDailyQuestionInput = z.infer<typeof createDailyQuestionSchema>;
+export type TeamDailyScheduleInput = z.infer<typeof teamDailyScheduleSchema>;
+export type TeamDailyQuestionsInput = z.infer<typeof teamDailyQuestionsSchema>;
+export type GenerateDailyRunInput = z.infer<typeof generateDailyRunSchema>;
+export type SubmitDailyResponseInput = z.infer<typeof submitDailyResponseSchema>;
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 export type UpdateTaskStatusInput = z.infer<typeof updateTaskStatusSchema>;

@@ -1,9 +1,11 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentInternalUser } from "@/lib/auth";
 import { getProject } from "@/app/actions/projects";
-import { listTasks } from "@/app/actions/tasks";
+import { getTaskBoard } from "@/app/actions/tasks";
 import { Board } from "@/components/board/Board";
+import { AppShell } from "@/components/app-shell";
+import { isSuperAdmin } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -11,48 +13,59 @@ type Params = { projectId: string };
 
 export default async function WorkerProjectBoardPage({ params }: { params: Promise<Params> }) {
   const { projectId } = await params;
-  const user = await getCurrentUser();
+  const user = await getCurrentInternalUser();
   if (!user) redirect("/login");
+  if (!isSuperAdmin(user.role)) redirect("/workspace/dashboard");
 
   const projectRes = await getProject(projectId);
   if (projectRes.error) return notFound();
   const project = projectRes.data as unknown as { id: string; name: string; description: string | null };
 
-  const tasksRes = await listTasks({ projectId, page: 1, pageSize: 100 });
-  const tasksData = tasksRes.data as unknown as { rows: Array<{ id: string; project_id: string; title: string; description: string | null; status: "todo" | "doing" | "done" | "blocked"; priority: "low" | "medium" | "high" | "urgent"; assignee_id: string | null; created_by: string; created_at: string; updated_at: string }> } | undefined;
-  const tasks = tasksData?.rows ?? [];
-  const tasksError = tasksRes.error;
-
-  const isAdmin = user.role === "admin";
+  const boardResult = await getTaskBoard(projectId);
+  const board = boardResult.data;
 
   return (
-    <main className="page-shell">
-      <div className="module-page" style={{ display: "grid", gap: 24 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+    <AppShell moduleSlug="projects" user={user}>
+      <section className="module-page page-stack board-page">
+        <header className="page-header board-page-header">
           <div>
-            <p className="eyebrow">Project board</p>
-            <h1 style={{ margin: "4px 0 4px" }}>{project.name}</h1>
-            <p className="muted small-text" style={{ margin: 0 }}>{project.description || "No description"}</p>
+            <p className="eyebrow">Tablero del proyecto</p>
+            <h1>{project.name}</h1>
+            <p className="muted small-text page-description">{project.description || "Sin descripción"}</p>
           </div>
-          <Link href="/projects" className="primary-link" style={{ background: "#fff", color: "#172033", border: "1px solid #d7deea" }}>
-            Back to my projects
+          <Link href="/projects" className="secondary-button board-page-back-link">
+            Volver a mis proyectos
           </Link>
-        </div>
+        </header>
 
-        <section className="card" style={{ display: "grid", gap: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-            <h2 style={{ margin: 0, fontSize: 15 }}>Kanban board · {tasks.length} card(s)</h2>
-            <span className="muted small-text">Drag to change status — uses updateTaskStatus (RLS-scoped)</span>
-          </div>
-          {tasksError ? (
-            <p style={{ margin: 0, background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626", borderRadius: 10, padding: 10, fontSize: 12 }}>{tasksError}</p>
+        <section className="card board-page-workspace" aria-labelledby="board-page-title">
+          <header className="section-heading board-page-toolbar">
+            <h2 id="board-page-title">Tareas</h2>
+            {board ? <span className="count-pill task-count">{board.tasks.length}</span> : null}
+            {board ? (
+              <span className="muted small-text board-page-status">
+                {board.readOnly ? "Proyecto archivado · solo lectura" : "Proyecto activo"}
+              </span>
+            ) : null}
+          </header>
+          {boardResult.error ? <p className="form-error board-page-error" role="alert">No pudimos cargar el tablero. {boardResult.error}</p> : null}
+          {board ? (
+            <Board
+              key={JSON.stringify([board.columns, board.tasks, board.members, board.readOnly])}
+              projectId={projectId}
+              initialColumns={board.columns}
+              initialTasks={board.tasks}
+              members={board.members}
+              readOnly={board.readOnly}
+            />
           ) : null}
-          <Board projectId={projectId} initialTasks={tasks as unknown as never} isAdmin={isAdmin} />
-          <p className="muted small-text" style={{ margin: 0 }}>
-            RLS ensures only project members see this board. Create cards per column with “+ Add”.{isAdmin ? " Admin can delete cards." : ""}
+          <p className="muted small-text board-page-help">
+            {board?.readOnly
+              ? "Podés consultar el historial, pero no realizar cambios."
+              : "Gestioná tareas, responsables, comentarios y archivos desde este tablero."}
           </p>
         </section>
-      </div>
-    </main>
+      </section>
+    </AppShell>
   );
 }

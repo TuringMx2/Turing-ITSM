@@ -1,52 +1,27 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { NeuralNetworkCanvas } from "@/components/neural-network-canvas";
+import Link from "next/link";
+import { useActionState, useEffect, useRef } from "react";
 import {
-	getMockSession,
-	getRoleHome,
-	loginWithMockUser,
-	testUsers,
-} from "@/lib/mock-auth";
-import { roleLabels } from "@/lib/rbac";
+	signIn,
+	type LoginActionState,
+} from "@/app/actions/auth";
+import { AmbientField } from "@/components/landing/ambient-field";
+
+const initialState: LoginActionState = { error: null };
 
 export function LoginForm() {
-	const router = useRouter();
-	const [email, setEmail] = useState("customer.user@test.com");
-	const [password, setPassword] = useState("password123");
-	const [error, setError] = useState<string | null>(null);
+	const [state, formAction, isPending] = useActionState(signIn, initialState);
+	const emailRef = useRef<HTMLInputElement>(null);
 
 	useEffect(() => {
-		const session = getMockSession();
-		if (session) {
-			router.replace(getRoleHome(session.role));
-		}
-	}, [router]);
-
-	function handleSubmit(event: { preventDefault: () => void }) {
-		event.preventDefault();
-		setError(null);
-
-		const session = loginWithMockUser(email, password);
-		if (!session) {
-			setError("Credenciales inválidas. Usá alguno de los usuarios de prueba.");
-			return;
-		}
-
-		router.replace(getRoleHome(session.role));
-	}
-
-	function fillTestUser(userEmail: string) {
-		setEmail(userEmail);
-		setPassword("password123");
-		setError(null);
-	}
+		if (state.error) emailRef.current?.focus();
+	}, [state.error]);
 
 	return (
 		<div className="login-scene">
-			<NeuralNetworkCanvas />
+			<AmbientField />
 			<div className="login-layout">
 				<section
 					className="login-card glass-card"
@@ -54,73 +29,66 @@ export function LoginForm() {
 				>
 					<header className="login-brand">
 						<Image
-							alt="Turing ITSM Logo"
+							alt="Logo de TuringMx"
 							className="login-logo"
 							height={72}
 							priority
 							src="/logo.png"
 							width={72}
 						/>
-						<h1 id="login-title">Turing ITSM</h1>
-						<p>Service Management Portal</p>
+						<h1 id="login-title" translate="no">TuringMx</h1>
+						<p>Plataforma de gestión de servicios</p>
 					</header>
 
-					<form className="form-stack" onSubmit={handleSubmit}>
+					<form action={formAction} aria-busy={isPending} className="form-stack">
 						<label>
-							<span>Email</span>
+							<span>Correo electrónico</span>
 							<input
+								aria-describedby={state.error ? "login-error" : undefined}
+								aria-invalid={state.error ? true : undefined}
 								autoComplete="email"
-								onChange={(event) => setEmail(event.target.value)}
-								placeholder="customer.user@test.com"
+								name="email"
+								placeholder="nombre@empresa.com…"
 								required
+								ref={emailRef}
+								spellCheck={false}
 								type="email"
-								value={email}
 							/>
 						</label>
 						<label>
-							<span>Password</span>
+							<span>Contraseña</span>
 							<input
+								aria-describedby={state.error ? "login-error" : undefined}
+								aria-invalid={state.error ? true : undefined}
 								autoComplete="current-password"
-								onChange={(event) => setPassword(event.target.value)}
+								name="password"
 								placeholder="••••••••"
 								required
 								type="password"
-								value={password}
 							/>
 						</label>
-						{error ? <p className="form-error">{error}</p> : null}
-						<button className="primary-button" type="submit">
-							Iniciar sesión
+						{state.error ? <p aria-live="polite" className="form-error" id="login-error" role="alert">{state.error}</p> : null}
+						<button className="primary-button" disabled={isPending} type="submit">
+							{isPending ? "Ingresando…" : "Ingresar"}
 						</button>
 						<p className="login-footnote">
-							Acceso mock para validar RBAC. Supabase Auth reemplazará esta capa
-							más adelante.
+							Acceso exclusivo para personal autorizado.
 						</p>
+						<Link className="auth-link" href="/register">
+							Registrate
+						</Link>
 					</form>
 				</section>
 
 				<aside
 					className="test-users-card glass-card"
-					aria-label="Usuarios de prueba"
+					aria-label="Acceso seguro al espacio de trabajo"
 				>
-					<p className="eyebrow">Identity & Access</p>
-					<h2>Usuarios de prueba</h2>
+					<p className="eyebrow">Identidad y acceso</p>
+					<h2>Espacio protegido</h2>
 					<p className="muted">
-						Todos usan password: <strong>password123</strong>
+						Usá tu cuenta asignada. La sesión y el rol se verifican antes de abrir el espacio de trabajo.
 					</p>
-					<div className="test-user-list">
-						{testUsers.map((user) => (
-							<button
-								className="test-user-button"
-								key={user.id}
-								onClick={() => fillTestUser(user.email)}
-								type="button"
-							>
-								<span>{roleLabels[user.role]}</span>
-								<small>{user.email}</small>
-							</button>
-						))}
-					</div>
 				</aside>
 			</div>
 		</div>

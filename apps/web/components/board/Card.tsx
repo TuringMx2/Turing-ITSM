@@ -2,112 +2,96 @@
 
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { Task } from "@turing-itsm/types";
+import type { BoardTask } from "@/app/actions/tasks";
 
-export type BoardTask = {
-  id: string;
-  project_id: string;
-  title: string;
-  description: string | null;
-  status: Task["status"];
-  priority: Task["priority"];
-  assignee_id: string | null;
-  created_by: string;
-  created_at: string;
-  updated_at: string;
+export type { BoardTask };
+
+const priorityLabel: Record<BoardTask["priority"], string> = {
+  low: "Baja",
+  medium: "Media",
+  high: "Alta",
+  urgent: "Urgente",
 };
 
-const priorityColor: Record<string, string> = {
-  low: "#64748b",
-  medium: "#2563eb",
-  high: "#ea580c",
-  urgent: "#dc2626",
-};
-
-const priorityLabel: Record<string, string> = {
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  urgent: "Urgent",
-};
+const dueDateFormatter = new Intl.DateTimeFormat("es-ES", {
+  day: "2-digit",
+  month: "short",
+  timeZone: "UTC",
+});
 
 export function Card({
   task,
   onDelete,
-  isAdmin,
+  onOpen,
+  disabled = false,
+  readOnly = false,
 }: {
   task: BoardTask;
   onDelete?: (taskId: string) => void;
-  isAdmin?: boolean;
+  onOpen?: (taskId: string) => void;
+  disabled?: boolean;
+  readOnly?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
+    disabled: disabled || readOnly,
   });
 
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.6 : 1,
-    background: "#fff",
-    border: "1px solid #e2e8f0",
-    borderRadius: 10,
-    padding: 12,
-    display: "grid",
-    gap: 6,
-    cursor: "grab",
-    boxShadow: isDragging ? "0 8px 24px rgba(0,0,0,0.12)" : "none",
-  };
-
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "start" }}>
-        <p style={{ margin: 0, fontWeight: 700, fontSize: 13, lineHeight: 1.3, flex: 1 }}>{task.title}</p>
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 700,
-            letterSpacing: "0.06em",
-            textTransform: "uppercase",
-            color: "#fff",
-            background: priorityColor[task.priority] ?? "#64748b",
-            borderRadius: 999,
-            padding: "2px 8px",
-            whiteSpace: "nowrap",
-          }}
+    <article
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.6 : 1,
+      }}
+      className={`board-task-card board-priority-${task.priority}${isDragging ? " board-task-card-dragging" : ""}`}
+    >
+      <header className="board-task-header">
+        <button
+          type="button"
+          disabled={disabled || readOnly}
+          {...attributes}
+          {...listeners}
+          aria-label={`Arrastrar la tarea ${task.title}`}
+          className="board-task-handle"
         >
-          {priorityLabel[task.priority] ?? task.priority}
+          {task.title}
+        </button>
+        <span className="board-priority-badge">
+          {priorityLabel[task.priority]}
         </span>
-      </div>
-      {task.description ? (
-        <p style={{ margin: 0, fontSize: 12, color: "#475569", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-          {task.description}
-        </p>
-      ) : null}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace" }}>
-          {task.assignee_id ? `assignee ${task.assignee_id.slice(0, 8)}…` : "unassigned"}
-        </span>
-        {isAdmin && onDelete ? (
+      </header>
+      <p className="board-task-description">
+        {task.description}
+      </p>
+      <p className="muted small-text board-task-meta">
+        Vence <time dateTime={task.due_date}>{dueDateFormatter.format(new Date(`${task.due_date}T00:00:00Z`))}</time> · {task.assignees.length > 0
+          ? task.assignees.map((assignee) => assignee.full_name || assignee.email).join(", ")
+          : "Sin asignar"}
+      </p>
+      <footer className="board-task-actions">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onOpen?.(task.id)}
+          className="board-card-action"
+          aria-label={`Abrir detalles de ${task.title}`}
+        >
+          Ver detalles
+        </button>
+        {!readOnly ? (
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(task.id);
-            }}
-            style={{
-              fontSize: 11,
-              color: "#dc2626",
-              background: "transparent",
-              border: "1px solid #fecaca",
-              borderRadius: 6,
-              padding: "2px 8px",
-              cursor: "pointer",
-            }}
+            disabled={disabled}
+            onClick={() => onDelete?.(task.id)}
+            className="board-card-action board-danger-button"
+            aria-label={`Eliminar la tarea ${task.title}`}
           >
-            Delete
+            Eliminar
           </button>
         ) : null}
-      </div>
-    </div>
+      </footer>
+    </article>
   );
 }

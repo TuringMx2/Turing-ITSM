@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { addMember, listMembers } from "@/app/actions/projects";
+import { addMember } from "@/app/actions/projects";
 import { useRouter } from "next/navigation";
 
 export default function AddMemberForm({ projectId }: { projectId: string }) {
@@ -54,8 +54,8 @@ export default function AddMemberForm({ projectId }: { projectId: string }) {
   );
 }
 
-export function MembersList({ projectId, initialMembers }: { projectId: string; initialMembers: Array<{ user_id: string; created_at: string }> }) {
-  // This is a simple read-only display; admin can see membership via server fetch.
+export function MembersList({ initialMembers }: { initialMembers: Array<{ user_id: string; created_at: string }> }) {
+  // This is a simple read-only display; superadmins can see membership via server fetch.
   // For interactivity, we could fetch via listMembers but SSR already provides data.
   if (initialMembers.length === 0) return <p className="muted small-text" style={{ margin: "8px 0 0" }}>No members yet.</p>;
   return (

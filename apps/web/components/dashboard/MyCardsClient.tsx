@@ -2,34 +2,22 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { listMyCards } from "@/app/actions/tasks";
-
-const priorityColor: Record<string, string> = {
-  low: "#64748b",
-  medium: "#2563eb",
-  high: "#ea580c",
-  urgent: "#dc2626",
-};
+import { listMyCards, type MyCardRow } from "@/app/actions/tasks";
 
 const priorityLabel: Record<string, string> = {
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  urgent: "Urgent",
+  low: "Baja",
+  medium: "Media",
+  high: "Alta",
+  urgent: "Urgente",
 };
+const dueDateFormatter = new Intl.DateTimeFormat("es", { dateStyle: "medium", timeZone: "UTC" });
 
-type CardRow = {
-  id: string;
-  project_id: string;
-  title: string;
-  status: string;
-  priority: string;
-  description: string | null;
-  created_at: string;
-};
+function formatDueDate(value: string): string {
+  return dueDateFormatter.format(new Date(`${value}T00:00:00Z`));
+}
 
 export function MyCardsClient() {
-  const [rows, setRows] = useState<CardRow[]>([]);
+  const [rows, setRows] = useState<MyCardRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -41,8 +29,7 @@ export function MyCardsClient() {
         if (cancelled) return;
         if (res.error) setError(res.error);
         else {
-          const data = res.data as unknown as { rows: CardRow[] };
-          setRows(data?.rows ?? []);
+          setRows(res.data?.rows ?? []);
         }
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
@@ -57,50 +44,51 @@ export function MyCardsClient() {
 
   if (loading) {
     return (
-      <section className="card" style={{ display: "grid", gap: 8 }}>
-        <h2 style={{ margin: 0, fontSize: 15 }}>My cards</h2>
-        <p className="muted small-text" style={{ margin: 0 }}>Loading…</p>
+      <section className="card dashboard-cards-widget" aria-labelledby="dashboard-cards-title" aria-busy="true">
+        <h2 id="dashboard-cards-title" className="dashboard-widget-title">Mis tareas</h2>
+        <p className="muted small-text dashboard-loading" role="status" aria-live="polite">Cargando tareas…</p>
       </section>
     );
   }
 
   if (error) {
     return (
-      <section className="card" style={{ display: "grid", gap: 8 }}>
-        <h2 style={{ margin: 0, fontSize: 15 }}>My cards</h2>
-        <p style={{ margin: 0, color: "#dc2626", fontSize: 12, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: 10 }}>{error}</p>
+      <section className="card dashboard-cards-widget" aria-labelledby="dashboard-cards-title">
+        <h2 id="dashboard-cards-title" className="dashboard-widget-title">Mis tareas</h2>
+        <p className="form-error dashboard-error" role="alert">No pudimos cargar tus tareas. {error}</p>
       </section>
     );
   }
 
   return (
-    <section className="card" style={{ display: "grid", gap: 12 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h2 style={{ margin: 0, fontSize: 15 }}>My cards · {rows.length}</h2>
-        <span className="muted small-text">Top 10 by priority</span>
-      </div>
+    <section className="card dashboard-cards-widget" aria-labelledby="dashboard-cards-title">
+      <header className="dashboard-widget-header">
+        <h2 id="dashboard-cards-title" className="dashboard-widget-title">Mis tareas</h2>
+        <span className="count-pill dashboard-task-count">{rows.length}</span>
+      </header>
       {rows.length === 0 ? (
-        <p className="muted small-text" style={{ margin: 0 }}>No cards assigned to you. Ask a project member to assign tasks.</p>
+        <p className="empty-state dashboard-empty-state" role="status">
+          No tenés tareas asignadas. Cuando te asignen una, aparecerá acá.
+        </p>
       ) : (
-        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
+        <ul className="dashboard-task-list">
           {rows.map((t) => (
-            <li key={t.id} style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: 12, display: "grid", gap: 4, background: "#fff" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                <span style={{ fontWeight: 700, fontSize: 13 }}>{t.title}</span>
-                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "#fff", background: priorityColor[t.priority] ?? "#64748b", borderRadius: 999, padding: "2px 8px" }}>
+            <li key={t.id} className="task-card dashboard-task-card">
+              <div className="task-card-header">
+                <strong className="task-card-title">{t.title}</strong>
+                <span className={`task-priority task-priority-${t.priority}`}>
                   {priorityLabel[t.priority] ?? t.priority}
                 </span>
               </div>
-              {t.description ? <span style={{ fontSize: 12, color: "#475569" }}>{t.description.slice(0, 120)}</span> : null}
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace" }}>{t.status} · {new Date(t.created_at).toLocaleDateString()}</span>
-                <Link href={`/projects/${t.project_id}/board`} style={{ fontSize: 11, color: "#2563eb", fontWeight: 700, textDecoration: "none" }}>Open board →</Link>
+              {t.description ? <p className="muted small-text task-card-description">{t.description.slice(0, 120)}</p> : null}
+              <div className="task-card-footer">
+                <span className="muted small-text task-card-meta">{t.column_name} · Vence {formatDueDate(t.due_date)}</span>
+                <Link className="task-card-link" href={`/projects/${t.project_id}/board`}>Abrir tablero →</Link>
               </div>
             </li>
           ))}
         </ul>
       )}
-      <p className="muted small-text" style={{ margin: 0 }}>Ordered by priority: urgent → high → medium → low. Also available at <Link href="/dashboard" style={{ color: "#2563eb", fontWeight: 700 }}>/dashboard</Link>.</p>
     </section>
   );
 }

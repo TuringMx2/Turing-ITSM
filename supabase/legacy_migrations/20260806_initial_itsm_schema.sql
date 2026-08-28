@@ -791,209 +791,182 @@ alter table public.ticket_sources enable row level security;
 alter table public.ticket_access_tokens enable row level security;
 alter table public.audit_events enable row level security;
 
--- Policy creation guarded for repeatable local development.
+-- Policies (idempotent via DROP IF EXISTS + CREATE)
 -- ticket_sources and ticket_access_tokens intentionally have NO policies: direct access
 -- is denied for every role and only SECURITY DEFINER helpers may read them.
-do $$
-begin
-  -- tenants
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'tenants' and policyname = 'tenants_select_by_scope') then
-    create policy tenants_select_by_scope on public.tenants
-      for select to authenticated
-      using (public.is_internal_user() or id = public.current_tenant_id());
-  end if;
 
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'tenants' and policyname = 'tenants_admin_write') then
-    create policy tenants_admin_write on public.tenants
-      for all to authenticated
-      using (public.is_admin())
-      with check (public.is_admin());
-  end if;
+-- tenants
+drop policy if exists tenants_select_by_scope on public.tenants;
+create policy tenants_select_by_scope on public.tenants
+  for select to authenticated
+  using (public.is_internal_user() or id = public.current_tenant_id());
 
-  -- profiles
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'profiles' and policyname = 'profiles_select_by_scope') then
-    create policy profiles_select_by_scope on public.profiles
-      for select to authenticated
-      using (
-        id = auth.uid()
-        or public.is_admin()
-        or (public.current_role() = 'support_agent' and id in (
-          select created_by_user_id from public.tickets where public.can_read_ticket(tickets)
-          union
-          select assigned_agent_id from public.tickets
-          where assigned_agent_id is not null and public.can_read_ticket(tickets)
-        ))
-      );
-  end if;
+drop policy if exists tenants_admin_write on public.tenants;
+create policy tenants_admin_write on public.tenants
+  for all to authenticated
+  using (public.is_admin())
+  with check (public.is_admin());
 
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'profiles' and policyname = 'profiles_admin_update') then
-    create policy profiles_admin_update on public.profiles
-      for update to authenticated
-      using (public.is_admin())
-      with check (public.is_admin());
-  end if;
+-- profiles
+drop policy if exists profiles_select_by_scope on public.profiles;
+create policy profiles_select_by_scope on public.profiles
+  for select to authenticated
+  using (
+    id = auth.uid()
+    or public.is_admin()
+    or (public.current_role() = 'support_agent' and id in (
+      select created_by_user_id from public.tickets where public.can_read_ticket(tickets)
+      union
+      select assigned_agent_id from public.tickets
+      where assigned_agent_id is not null and public.can_read_ticket(tickets)
+    ))
+  );
 
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'profiles' and policyname = 'profiles_admin_insert') then
-    create policy profiles_admin_insert on public.profiles
-      for insert to authenticated
-      with check (public.is_admin());
-  end if;
+drop policy if exists profiles_admin_update on public.profiles;
+create policy profiles_admin_update on public.profiles
+  for update to authenticated
+  using (public.is_admin())
+  with check (public.is_admin());
 
-  -- permissions / role_permissions
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'permissions' and policyname = 'permissions_select_authenticated') then
-    create policy permissions_select_authenticated on public.permissions
-      for select to authenticated
-      using (true);
-  end if;
+drop policy if exists profiles_admin_insert on public.profiles;
+create policy profiles_admin_insert on public.profiles
+  for insert to authenticated
+  with check (public.is_admin());
 
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'role_permissions' and policyname = 'role_permissions_select_authenticated') then
-    create policy role_permissions_select_authenticated on public.role_permissions
-      for select to authenticated
-      using (true);
-  end if;
+-- permissions / role_permissions
+drop policy if exists permissions_select_authenticated on public.permissions;
+create policy permissions_select_authenticated on public.permissions
+  for select to authenticated
+  using (true);
 
-  -- tickets
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'tickets' and policyname = 'tickets_select_by_role_scope') then
-    create policy tickets_select_by_role_scope on public.tickets
-      for select to authenticated
-      using (public.can_read_ticket(tickets));
-  end if;
+drop policy if exists role_permissions_select_authenticated on public.role_permissions;
+create policy role_permissions_select_authenticated on public.role_permissions
+  for select to authenticated
+  using (true);
 
-  -- Ticket creation is reserved for internal roles via the service/platform flows.
-  -- End-user-facing anonymous tickets are created through the channels API (service
-  -- side, governance by reporter source), NOT by end users writing tickets directly.
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'tickets' and policyname = 'tickets_insert_by_role_scope') then
-    create policy tickets_insert_by_role_scope on public.tickets
-      for insert to authenticated
-      with check (
-        public.current_role() in ('support_agent', 'admin')
-        and status = 'new'
-        and assigned_agent_id is null
-        and created_by_user_id = auth.uid()
-        and reporter_id is null
-      );
-  end if;
+-- tickets
+drop policy if exists tickets_select_by_role_scope on public.tickets;
+create policy tickets_select_by_role_scope on public.tickets
+  for select to authenticated
+  using (public.can_read_ticket(tickets));
 
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'tickets' and policyname = 'tickets_update_by_internal_roles') then
-    create policy tickets_update_by_internal_roles on public.tickets
-      for update to authenticated
-      using (public.current_role() in ('support_agent', 'admin'))
-      with check (public.current_role() in ('support_agent', 'admin'));
-  end if;
+drop policy if exists tickets_insert_by_role_scope on public.tickets;
+create policy tickets_insert_by_role_scope on public.tickets
+  for insert to authenticated
+  with check (
+    public.current_role() in ('support_agent', 'admin')
+    and status = 'new'
+    and assigned_agent_id is null
+    and created_by_user_id = auth.uid()
+    and reporter_id is null
+  );
 
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'tickets' and policyname = 'tickets_admin_delete') then
-    create policy tickets_admin_delete on public.tickets
-      for delete to authenticated
-      using (public.is_admin());
-  end if;
+drop policy if exists tickets_update_by_internal_roles on public.tickets;
+create policy tickets_update_by_internal_roles on public.tickets
+  for update to authenticated
+  using (public.current_role() in ('support_agent', 'admin'))
+  with check (public.current_role() in ('support_agent', 'admin'));
 
-  -- ticket_comments
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'ticket_comments' and policyname = 'ticket_comments_select_by_visibility') then
-    create policy ticket_comments_select_by_visibility on public.ticket_comments
-      for select to authenticated
-      using (
-        public.can_read_ticket_id(ticket_id)
-        and (visibility = 'public' or public.is_internal_user())
-      );
-  end if;
+drop policy if exists tickets_admin_delete on public.tickets;
+create policy tickets_admin_delete on public.tickets
+  for delete to authenticated
+  using (public.is_admin());
 
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'ticket_comments' and policyname = 'ticket_comments_insert_by_visibility') then
-    create policy ticket_comments_insert_by_visibility on public.ticket_comments
-      for insert to authenticated
-      with check (
-        public.can_read_ticket_id(ticket_id)
-        and author_user_id = auth.uid()
-        and tenant_id = (select tickets.tenant_id from public.tickets where tickets.id = ticket_id)
-        and (visibility = 'public' or public.is_internal_user())
-      );
-  end if;
+-- ticket_comments
+drop policy if exists ticket_comments_select_by_visibility on public.ticket_comments;
+create policy ticket_comments_select_by_visibility on public.ticket_comments
+  for select to authenticated
+  using (
+    public.can_read_ticket_id(ticket_id)
+    and (visibility = 'public' or public.is_internal_user())
+  );
 
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'ticket_comments' and policyname = 'ticket_comments_update_own_or_internal') then
-    create policy ticket_comments_update_own_or_internal on public.ticket_comments
-      for update to authenticated
-      using (author_user_id = auth.uid() or public.is_internal_user())
-      with check (
-        public.can_read_ticket_id(ticket_id)
-        and ticket_id = old.ticket_id
-        and tenant_id = old.tenant_id
-        and author_user_id = old.author_user_id
-        and reporter_id = old.reporter_id
-        and (author_user_id = auth.uid() or public.is_admin())
-        and (visibility = old.visibility or public.is_internal_user())
-      );
-  end if;
+drop policy if exists ticket_comments_insert_by_visibility on public.ticket_comments;
+create policy ticket_comments_insert_by_visibility on public.ticket_comments
+  for insert to authenticated
+  with check (
+    public.can_read_ticket_id(ticket_id)
+    and author_user_id = auth.uid()
+    and tenant_id = (select tickets.tenant_id from public.tickets where tickets.id = ticket_id)
+    and (visibility = 'public' or public.is_internal_user())
+  );
 
-  -- No DELETE policy: comments are immutable once their authorship is inserted.
-  -- Deletion only happens through privileged/service-side flows that act as the table
-  -- owner, not through the client API.
+-- UPDATE: immutability of ticket_id, tenant_id, author_user_id, reporter_id
+-- is enforced at the application layer (Server Actions), not in RLS.
+-- RLS only gates WHO can update and WHAT visibility the new row can have.
+drop policy if exists ticket_comments_update_own_or_internal on public.ticket_comments;
+create policy ticket_comments_update_own_or_internal on public.ticket_comments
+  for update to authenticated
+  using (
+    author_user_id = auth.uid() or public.is_internal_user()
+  )
+  with check (
+    public.can_read_ticket_id(ticket_id)
+    and (author_user_id = auth.uid() or public.is_admin())
+    and (visibility = 'public' or public.is_internal_user())
+  );
 
-  -- ticket_attachments
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'ticket_attachments' and policyname = 'ticket_attachments_select_by_visibility') then
-    create policy ticket_attachments_select_by_visibility on public.ticket_attachments
-      for select to authenticated
-      using (
-        public.can_read_ticket_id(ticket_id)
-        and (visibility = 'public' or public.is_internal_user())
-      );
-  end if;
+-- No DELETE policy: comments are immutable once their authorship is inserted.
 
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'ticket_attachments' and policyname = 'ticket_attachments_insert_by_visibility') then
-    create policy ticket_attachments_insert_by_visibility on public.ticket_attachments
-      for insert to authenticated
-      with check (
-        public.can_read_ticket_id(ticket_id)
-        and uploaded_by_user_id = auth.uid()
-        and tenant_id = (select tickets.tenant_id from public.tickets where tickets.id = ticket_id)
-        and bucket = 'ticket-attachments'
-        and (visibility = 'public' or public.is_internal_user())
-      );
-  end if;
+-- ticket_attachments
+drop policy if exists ticket_attachments_select_by_visibility on public.ticket_attachments;
+create policy ticket_attachments_select_by_visibility on public.ticket_attachments
+  for select to authenticated
+  using (
+    public.can_read_ticket_id(ticket_id)
+    and (visibility = 'public' or public.is_internal_user())
+  );
 
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'ticket_attachments' and policyname = 'ticket_attachments_delete_own_or_admin') then
-    create policy ticket_attachments_delete_own_or_admin on public.ticket_attachments
-      for delete to authenticated
-      using (uploaded_by_user_id = auth.uid() or public.is_admin());
-  end if;
+drop policy if exists ticket_attachments_insert_by_visibility on public.ticket_attachments;
+create policy ticket_attachments_insert_by_visibility on public.ticket_attachments
+  for insert to authenticated
+  with check (
+    public.can_read_ticket_id(ticket_id)
+    and uploaded_by_user_id = auth.uid()
+    and tenant_id = (select tickets.tenant_id from public.tickets where tickets.id = ticket_id)
+    and bucket = 'ticket-attachments'
+    and (visibility = 'public' or public.is_internal_user())
+  );
 
-  -- audit_events
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'audit_events' and policyname = 'audit_events_select_by_scope') then
-    create policy audit_events_select_by_scope on public.audit_events
-      for select to authenticated
-      using (
-        public.is_admin()
-        or (
-          resource_type = 'ticket'
-          and resource_id is not null
-          and public.can_read_ticket_id(resource_id)
-          and (
-            public.is_internal_user()
-            or action not in ('note_internal_created', 'internal_attachment_added')
-          )
-        )
-      );
-  end if;
+drop policy if exists ticket_attachments_delete_own_or_admin on public.ticket_attachments;
+create policy ticket_attachments_delete_own_or_admin on public.ticket_attachments
+  for delete to authenticated
+  using (uploaded_by_user_id = auth.uid() or public.is_admin());
 
-  -- channels: internal roles only.
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'channels' and policyname = 'channels_select_internal') then
-    create policy channels_select_internal on public.channels
-      for select to authenticated
-      using (public.is_internal_user() or public.is_admin());
-  end if;
+-- audit_events
+drop policy if exists audit_events_select_by_scope on public.audit_events;
+create policy audit_events_select_by_scope on public.audit_events
+  for select to authenticated
+  using (
+    public.is_admin()
+    or (
+      resource_type = 'ticket'
+      and resource_id is not null
+      and public.can_read_ticket_id(resource_id)
+      and (
+        public.is_internal_user()
+        or action not in ('note_internal_created', 'internal_attachment_added')
+      )
+    )
+  );
 
-  -- reporters: visible/manageable by internal roles only.
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'reporters' and policyname = 'reporters_select_internal') then
-    create policy reporters_select_internal on public.reporters
-      for select to authenticated
-      using (public.is_internal_user() or public.is_admin());
-  end if;
+-- channels: internal roles only.
+drop policy if exists channels_select_internal on public.channels;
+create policy channels_select_internal on public.channels
+  for select to authenticated
+  using (public.is_internal_user() or public.is_admin());
 
-  if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'reporters' and policyname = 'reporters_write_internal') then
-    create policy reporters_write_internal on public.reporters
-      for all to authenticated
-      using (public.is_internal_user() or public.is_admin())
-      with check (public.is_internal_user() or public.is_admin());
-  end if;
-end $$;
+-- reporters: visible/manageable by internal roles only.
+drop policy if exists reporters_select_internal on public.reporters;
+create policy reporters_select_internal on public.reporters
+  for select to authenticated
+  using (public.is_internal_user() or public.is_admin());
+
+drop policy if exists reporters_write_internal on public.reporters;
+create policy reporters_write_internal on public.reporters
+  for all to authenticated
+  using (public.is_internal_user() or public.is_admin())
+  with check (public.is_internal_user() or public.is_admin());
 
 -- Storage ---------------------------------------------------------------------------------
 -- Private bucket holding ticket attachment blobs. The bucket is NOT public; objects are

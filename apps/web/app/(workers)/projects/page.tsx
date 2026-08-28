@@ -1,65 +1,79 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentInternalUser } from "@/lib/auth";
 import { listProjects } from "@/app/actions/projects";
+import { AppShell } from "@/components/app-shell";
+import { isSuperAdmin } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
+const projectDateFormatter = new Intl.DateTimeFormat("es", { dateStyle: "medium" });
+
 export default async function WorkerProjectsPage() {
-  const user = await getCurrentUser();
+  const user = await getCurrentInternalUser();
   if (!user) redirect("/login");
+  if (!isSuperAdmin(user.role)) redirect("/workspace/dashboard");
 
   const res = await listProjects({ page: 1, pageSize: 50 });
   const data = res.data as unknown as { rows: Array<{ id: string; name: string; description: string | null; created_at: string }>; count: number } | undefined;
   const rows = data?.rows ?? [];
 
   return (
-    <main className="page-shell">
-      <div className="module-page" style={{ display: "grid", gap: 24 }}>
-        <div>
-          <p className="eyebrow">Workers</p>
-          <h1 style={{ margin: "4px 0 8px" }}>My projects</h1>
-          <p className="muted" style={{ margin: 0, maxWidth: 640 }}>
-            Projects you belong to. Admin assigns membership; RLS ensures you only see scoped projects. Board access will be enabled in T8.
-          </p>
-        </div>
+    <AppShell moduleSlug="projects" user={user}>
+      <section className="module-page page-stack project-page">
+        <header className="page-header project-page-header">
+          <div>
+            <p className="eyebrow">Proyectos</p>
+            <h1>Mis proyectos</h1>
+            <p className="muted page-description">
+              Accedé a los tableros de los proyectos de los que formás parte.
+            </p>
+          </div>
+        </header>
 
-        {res.error ? <p className="form-error">{res.error}</p> : null}
-
-        <section className="card" style={{ display: "grid", gap: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <h2 style={{ margin: 0, fontSize: 16 }}>Projects · {data?.count ?? rows.length}</h2>
-            {user.role === "admin" ? (
-              <Link href="/admin/projects" className="primary-link" style={{ height: 36, padding: "0 14px", fontSize: 13 }}>
-                Manage as admin
+        {res.error ? (
+          <p className="form-error project-error" role="alert">No pudimos cargar tus proyectos. Actualizá la página e intentá nuevamente.</p>
+        ) : (
+        <section className="card project-directory" aria-labelledby="project-list-title">
+          <header className="section-heading project-directory-header">
+            <h2 id="project-list-title">Proyectos</h2>
+            <span className="count-pill project-count">{data?.count ?? rows.length}</span>
+            {isSuperAdmin(user.role) ? (
+              <Link href="/workspace/roles-permisos" className="primary-link project-admin-link">
+                Administrar accesos
               </Link>
             ) : null}
-          </div>
+          </header>
 
           {rows.length === 0 ? (
-            <p className="muted">No projects assigned yet. Ask an admin to add you to a project.</p>
+            <p className="empty-state project-empty-state" role="status">
+              Todavía no tenés proyectos asignados. Contactá a un administrador para solicitar acceso.
+            </p>
           ) : (
-            <div style={{ display: "grid", gap: 12 }}>
+            <div className="project-list">
               {rows.map((p) => (
-                <div key={p.id} style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: 15 }}>{p.name}</h3>
-                    <p className="muted small-text" style={{ margin: "4px 0 0", maxWidth: 520 }}>{p.description || "No description"}</p>
-                    <p className="muted small-text" style={{ margin: "4px 0 0", fontFamily: "monospace", fontSize: 11 }}>{new Date(p.created_at).toLocaleDateString()}</p>
+                <article key={p.id} className="project-card project-list-item">
+                  <div className="project-card-content">
+                    <h3 className="project-card-title">{p.name}</h3>
+                    <p className="muted small-text project-card-description">{p.description || "Sin descripción"}</p>
+                    <time className="muted small-text project-card-date" dateTime={p.created_at}>
+                      Creado el {projectDateFormatter.format(new Date(p.created_at))}
+                    </time>
                   </div>
-                  <Link href={`/projects/${p.id}/board`} className="primary-link" style={{ background: "#fff", color: "#172033", border: "1px solid #d7deea", height: 36, padding: "0 14px", fontSize: 13 }}>
-                    View board
+                  <Link href={`/projects/${p.id}/board`} className="primary-link project-card-link">
+                    Ver tablero
                   </Link>
-                </div>
+                </article>
               ))}
             </div>
           )}
         </section>
+        )}
 
-        <p className="muted small-text" style={{ margin: 0 }}>
-          Need to create a project? Contact an admin — only admins can create projects (enforced by RLS and server actions).
-        </p>
-      </div>
-    </main>
+        {!res.error ? <p className="muted small-text project-help-text">
+          ¿Necesitás crear un proyecto? Contactá a un administrador.
+        </p> : null}
+      </section>
+    </AppShell>
   );
 }
