@@ -1,0 +1,337 @@
+"use client";
+
+import { useActionState, useEffect, useId, useRef, type ReactNode } from "react";
+import {
+  createDailyQuestion,
+  deactivateDailyQuestion,
+  generateDailyRun,
+  saveTeamDailyQuestions,
+  saveTeamDailySchedule,
+  submitDailyResponse,
+  type DailyActionState,
+  type DailyQuestionRow,
+  type DailyRunQuestionRow,
+  type DailyRunRow,
+  type DailyScheduleRow,
+  type DailyTeamRow,
+} from "@/app/actions/daily-runs";
+
+const initialState: DailyActionState = { status: "idle", message: "" };
+
+type DailyAction = (
+  state: DailyActionState,
+  formData: FormData,
+) => Promise<DailyActionState>;
+
+const weekdays = [
+  { value: 1, label: "L", name: "Lunes" },
+  { value: 2, label: "M", name: "Martes" },
+  { value: 3, label: "X", name: "Miércoles" },
+  { value: 4, label: "J", name: "Jueves" },
+  { value: 5, label: "V", name: "Viernes" },
+  { value: 6, label: "S", name: "Sábado" },
+  { value: 7, label: "D", name: "Domingo" },
+];
+
+function MutationForm({
+  action,
+  children,
+  submitLabel,
+  pendingLabel,
+  className = "daily-form",
+  onSuccess,
+}: {
+  action: DailyAction;
+  children: ReactNode;
+  submitLabel: string;
+  pendingLabel: string;
+  className?: string;
+  onSuccess?: () => void;
+}) {
+  const [state, formAction, pending] = useActionState(action, initialState);
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  const successFired = useRef(false);
+
+  useEffect(() => {
+    if (state.status === "error") errorRef.current?.focus();
+  }, [state.status]);
+
+  useEffect(() => {
+    if (state.status === "success" && !successFired.current) {
+      successFired.current = true;
+      onSuccess?.();
+    }
+  }, [state.status, onSuccess]);
+
+  return (
+    <form action={formAction} className={className}>
+      {children}
+      {state.message ? (
+        <p
+          aria-live="polite"
+          className={state.status === "error" ? "action-message error" : "action-message success"}
+          ref={state.status === "error" ? errorRef : undefined}
+          role={state.status === "error" ? "alert" : "status"}
+          tabIndex={state.status === "error" ? -1 : undefined}
+        >
+          {state.message}
+        </p>
+      ) : null}
+      <button className="primary-button" disabled={pending} type="submit">
+        {pending ? pendingLabel : submitLabel}
+      </button>
+    </form>
+  );
+}
+
+export function CreateDailyQuestionForm() {
+  return (
+    <MutationForm action={createDailyQuestion} pendingLabel="Creando…" submitLabel="Agregar pregunta">
+      <label>
+        <span>Nueva pregunta</span>
+        <textarea
+          autoComplete="off"
+          maxLength={500}
+          minLength={3}
+          name="questionText"
+          placeholder="Ej.: ¿Qué avance querés compartir con el equipo?…"
+          required
+          rows={3}
+        />
+      </label>
+    </MutationForm>
+  );
+}
+
+export function DeactivateDailyQuestionForm({ questionId }: { questionId: string }) {
+  return (
+    <details className="daily-question-actions">
+      <summary>Más acciones</summary>
+      <MutationForm
+        action={deactivateDailyQuestion}
+        className="daily-deactivate-form"
+        pendingLabel="Desactivando…"
+        submitLabel="Desactivar"
+      >
+        <input name="questionId" type="hidden" value={questionId} />
+        <label className="daily-confirmation">
+          <input name="confirmation" required type="checkbox" value="true" />
+          <span>Quitar esta pregunta de las selecciones activas.</span>
+        </label>
+      </MutationForm>
+    </details>
+  );
+}
+
+function intervalToMinutes(value: string): number {
+  const match = /^(?:(\d+) days? )?(\d{2}):(\d{2}):\d{2}$/.exec(value);
+  if (!match) return 480;
+  return Number(match[1] ?? "0") * 1440 + Number(match[2]) * 60 + Number(match[3]);
+}
+
+function timeInputValue(value: string): string {
+  return /^\d{2}:\d{2}/.test(value) ? value.slice(0, 5) : "09:00";
+}
+
+export function TeamDailyConfigurationForm({
+  team,
+  schedule,
+  selectedQuestionIds,
+  activeQuestions,
+}: {
+  team: DailyTeamRow;
+  schedule?: DailyScheduleRow;
+  selectedQuestionIds: string[];
+  activeQuestions: DailyQuestionRow[];
+}) {
+  const timezoneListId = `${useId()}-daily-timezones`;
+  const positionValues = [0, 1, 2].map((index) => selectedQuestionIds[index] ?? "");
+  const selectedWeekdays = new Set(schedule?.scheduled_weekdays ?? [1, 2, 3, 4, 5]);
+
+  return (
+    <details className="card daily-team-card">
+      <summary className="daily-team-heading">
+        <div>
+          <p className="eyebrow">Equipo</p>
+          <h3>{team.name}</h3>
+          <p className="muted small-text">{schedule ? `${timeInputValue(schedule.local_time)} · ${schedule.scheduled_weekdays.length} días` : "Configuración pendiente"}</p>
+        </div>
+        <span className={schedule?.is_active ? "daily-state active" : "daily-state"}>
+          {schedule?.is_active ? "Horario activo" : "Sin horario activo"}
+        </span>
+      </summary>
+
+      <div className="daily-team-editor">
+
+      <MutationForm action={saveTeamDailySchedule} pendingLabel="Guardando…" submitLabel="Guardar horario">
+        <input name="teamId" type="hidden" value={team.id} />
+        <div className="daily-schedule-grid">
+          <label>
+            <span>Zona horaria</span>
+            <input
+              autoComplete="off"
+              defaultValue={schedule?.timezone_name ?? "America/Argentina/Buenos_Aires"}
+              list={timezoneListId}
+              maxLength={100}
+              name="timezoneName"
+              required
+            />
+          </label>
+          <label>
+            <span>Hora local</span>
+            <input autoComplete="off" defaultValue={timeInputValue(schedule?.local_time ?? "09:00")} name="localTime" required type="time" />
+          </label>
+          <label>
+            <span>Ventana de respuesta (minutos)</span>
+            <input
+              autoComplete="off"
+              defaultValue={intervalToMinutes(schedule?.response_window ?? "08:00:00")}
+              max={10080}
+              min={1}
+              name="responseWindowMinutes"
+              required
+              step={1}
+              type="number"
+            />
+          </label>
+        </div>
+        <datalist id={timezoneListId}>
+          <option value="America/Argentina/Buenos_Aires" />
+          <option value="America/Santiago" />
+          <option value="America/Bogota" />
+          <option value="America/Mexico_City" />
+          <option value="America/New_York" />
+          <option value="Europe/Madrid" />
+          <option value="UTC" />
+        </datalist>
+        <fieldset className="daily-weekdays">
+          <legend>Días de ejecución</legend>
+          <div>
+            {weekdays.map((weekday) => (
+              <label key={weekday.value}>
+                <input aria-label={weekday.name} defaultChecked={selectedWeekdays.has(weekday.value)} name="weekday" type="checkbox" value={weekday.value} />
+                <span>{weekday.label}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <label className="daily-confirmation">
+          <input defaultChecked={schedule?.is_active ?? true} name="isActive" type="checkbox" value="true" />
+          <span>Equipo habilitado para recibir ejecuciones Daily</span>
+        </label>
+      </MutationForm>
+
+      <MutationForm action={saveTeamDailyQuestions} pendingLabel="Guardando…" submitLabel="Guardar preguntas">
+        <input name="teamId" type="hidden" value={team.id} />
+        <div className="daily-question-selection-heading">
+          <div>
+            <h3>Preguntas y orden</h3>
+            <p className="muted small-text">La posición 1 aparece primero. Podés operar con menos de 3 preguntas, pero es recomendable completar las 3.</p>
+          </div>
+          {selectedQuestionIds.length < 3 ? <span className="daily-state warning">Faltan {3 - selectedQuestionIds.length}</span> : null}
+        </div>
+        {[1, 2, 3].map((position, index) => (
+          <label className="daily-question-position" key={position}>
+            <span>Posición {position}</span>
+            <select autoComplete="off" defaultValue={positionValues[index]} name="questionId">
+              <option value="">Sin pregunta</option>
+              {activeQuestions.map((question) => (
+                <option key={question.id} value={question.id}>
+                  {question.question_text}
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
+        <details className="context-note">
+          <summary>Consideración técnica</summary>
+          <p>Si una pregunta se desactiva mientras editás, actualizá la página antes de guardar nuevamente.</p>
+        </details>
+      </MutationForm>
+      </div>
+    </details>
+  );
+}
+
+export function GenerateDailyRunForm({ teams, schedules }: { teams: DailyTeamRow[]; schedules: DailyScheduleRow[] }) {
+  const activeTeamIds = new Set(schedules.filter((schedule) => schedule.is_active).map((schedule) => schedule.team_id));
+  const eligibleTeams = teams.filter((team) => activeTeamIds.has(team.id));
+
+  if (eligibleTeams.length === 0) {
+    return <p className="muted">Primero guardá un horario activo para al menos un equipo.</p>;
+  }
+
+  return (
+    <MutationForm action={generateDailyRun} pendingLabel="Generando…" submitLabel="Generar ejecución">
+      <div className="daily-schedule-grid">
+        <label>
+          <span>Equipo con horario activo</span>
+          <select autoComplete="off" defaultValue="" name="teamId" required>
+            <option disabled value="">Seleccioná un equipo…</option>
+            {eligibleTeams.map((team) => (
+              <option key={team.id} value={team.id}>{team.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Fecha local del equipo</span>
+          <input autoComplete="off" name="localDate" required type="date" />
+        </label>
+      </div>
+      <p className="muted small-text">La ejecución usa la fecha local y el horario configurado del equipo.</p>
+    </MutationForm>
+  );
+}
+
+export function DailyResponseForm({
+  pendingRuns,
+  runQuestions,
+  onSuccess,
+}: {
+  pendingRuns: DailyRunRow[];
+  runQuestions: DailyRunQuestionRow[];
+  onSuccess?: () => void;
+}) {
+  const questions = Array.from(
+    runQuestions
+      .slice()
+      .sort((left, right) => left.position - right.position)
+      .reduce((byId, question) => {
+        if (!byId.has(question.question_id)) byId.set(question.question_id, question);
+        return byId;
+      }, new Map<string, DailyRunQuestionRow>())
+      .values(),
+  );
+
+  return (
+    <MutationForm
+      action={submitDailyResponse}
+      onSuccess={onSuccess}
+      pendingLabel="Enviando…"
+      submitLabel="Enviar respuesta Daily"
+      className="card daily-response-form"
+    >
+      {pendingRuns.map((run) => <input key={run.id} name="runId" type="hidden" value={run.id} />)}
+      <div className="daily-response-intro">
+        <p className="eyebrow">Respuesta única</p>
+        <h2>Respondé las preguntas de tus ejecuciones pendientes</h2>
+        <p className="muted">Las preguntas compartidas se responden una sola vez y se aplican a las {pendingRuns.length} ejecuciones visibles.</p>
+      </div>
+      {questions.map((question, index) => (
+        <label className="daily-answer-field" key={question.question_id}>
+          <span>{index + 1}. {question.question_text}</span>
+          <textarea
+            autoComplete="off"
+            maxLength={4000}
+            minLength={1}
+            name={`answer:${question.question_id}`}
+            placeholder="Escribí tu respuesta…"
+            required
+            rows={4}
+          />
+        </label>
+      ))}
+      <p className="muted small-text">Al enviar, la respuesta queda registrada como evidencia inmutable y no se puede editar.</p>
+    </MutationForm>
+  );
+}

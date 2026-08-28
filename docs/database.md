@@ -14,7 +14,7 @@ It is a local migration artifact only. It has **not** been applied to a remote S
 
 The migration defines:
 
-- RBAC enums matching the frontend role strings: `customer_user`, `customer_manager`, `support_agent`, `admin`.
+- RBAC enums matching the frontend role strings: `customer_user`, `customer_manager`, `support_agent`, `admin`, `superadmin`.
 - Ticket priority enum constrained to exactly: `low`, `moderate`, `high`, `urgent`.
 - Ticket statuses for the operational workflow: `new`, `assigned`, `in_progress`, `waiting_customer`, `waiting_internal`, `escalated`, `resolved`, `closed`, `cancelled`.
 - Tenant and profile tables linked to `auth.users` through `profiles.id`.
@@ -62,14 +62,21 @@ Ticket visibility follows the RBAC document:
 
 - `customer_user`: only tickets created by that user in the same tenant.
 - `customer_manager`: all tickets in the same tenant.
-- `support_agent`: operational access to tickets across tenants.
-- `admin`: global access.
+- `support_agent`: tenant-scoped operational access to tickets.
+- `admin`: tenant-scoped administrative access.
+- `superadmin`: tenant-scoped administrative access with the same effective permissions as `admin` and access to all current workspace modules.
 
-Customer roles can only read comments and attachments where `visibility = 'public'`. Internal comments/notes and internal attachments are visible only to `support_agent` and `admin`.
+Customer roles can only read comments and attachments where `visibility = 'public'`. Internal comments/notes and internal attachments are visible only to internal roles.
 
 RLS is a database safety layer. Backend endpoints must still enforce role, permission, and resource-scope checks before writes and before generating Storage signed URLs.
 
-For the first baseline, direct customer table updates are intentionally conservative: customers can create tickets, read according to tenant/ownership scope, and add public comments/attachments to visible tickets. Editing submitted ticket fields while a ticket is still `new` should be implemented later through a controlled backend endpoint or RPC that restricts writable columns. Profile role and tenant changes are admin-only to prevent privilege escalation.
+For the first baseline, direct customer table updates are intentionally conservative: customers can create tickets, read according to tenant/ownership scope, and add public comments/attachments to visible tickets. Editing submitted ticket fields while a ticket is still `new` should be implemented later through a controlled backend endpoint or RPC that restricts writable columns. Profile role and tenant changes are admin-equivalent only (`admin` or `superadmin`) and remain tenant-scoped to prevent privilege escalation.
+
+## Superadmin rollout
+
+The forward migration `202608250700_superadmin_role_access.sql` adds the `superadmin` enum value, copies the current `admin` permission mappings, and updates application/database authorization boundaries. The role remains bound to the profile's tenant; it is not a global cross-tenant role.
+
+The migration does not create an Auth account and does not contain account credentials. Account provisioning is a documented follow-up for the approved Auth account-management process once a safe account-management tool is available.
 
 ## Applying later
 

@@ -7,7 +7,11 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
 
-  const supabase = createServerClient(supabaseUrl!, supabaseKey!, {
+  if (!supabaseUrl || !supabaseKey) {
+    return { response, supabase: null, userId: null };
+  }
+
+  const supabase = createServerClient(supabaseUrl, supabaseKey, {
     cookies: {
       getAll() {
         return request.cookies.getAll();
@@ -22,8 +26,12 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  // Required so Supabase can refresh expired auth tokens during middleware execution.
-  await supabase.auth.getUser();
+  // Validate claims early so refreshed cookies are included in the middleware response.
+  const { data, error } = await supabase.auth.getClaims();
 
-  return response;
+  return {
+    response,
+    supabase,
+    userId: error ? null : (data?.claims.sub ?? null),
+  };
 }

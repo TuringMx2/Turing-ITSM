@@ -3,15 +3,14 @@ import Link from "next/link";
 export default function HomePage() {
 	return (
 		<main className="page-shell centered-shell">
-			<section className="hero-card">
-				<p className="eyebrow">Turing ITSM MVP</p>
-				<h1>Login y navegación RBAC por rol.</h1>
+			<section className="hero-card page-home-hero">
+				<p className="eyebrow">Turing ITSM</p>
+				<h1>Tu operación de servicios, en un solo lugar.</h1>
 				<p className="muted">
-					Estructura inicial para validar cuatro roles, sidebars dinámicas,
-					módulos permitidos y cierre de sesión antes de conectar Supabase Auth.
+					Gestioná proyectos, tareas y trabajo diario con la visibilidad que cada equipo necesita.
 				</p>
-				<Link className="primary-link" href="/login">
-					Ir al login
+				<Link className="primary-link page-home-link" href="/login">
+					Ingresar
 				</Link>
 			</section>
 		</main>

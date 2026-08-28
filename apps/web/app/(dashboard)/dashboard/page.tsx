@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-
-export default function AdminDashboardPage() {
+export default async function DashboardPage() {
 	redirect("/workspace/dashboard");
 }

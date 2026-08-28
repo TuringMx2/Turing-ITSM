@@ -63,6 +63,7 @@ export function NeuralNetworkCanvas() {
 		let particles: Particle[] = [];
 		const mouse = { x: -1000, y: -1000, radius: 150 };
 		const colors = ["#1db9a6", "#3b82f6", "#22c55e"];
+		const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 		function resize() {
 			drawingCanvas.width = window.innerWidth;
@@ -76,6 +77,11 @@ export function NeuralNetworkCanvas() {
 				},
 				() => new Particle(drawingCanvas, colors),
 			);
+			if (reduceMotion) {
+				drawingContext.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+				particles.forEach((particle) => particle.draw(drawingContext));
+				connect();
+			}
 		}
 
 		function handleMouseMove(event: MouseEvent) {
@@ -119,9 +125,11 @@ export function NeuralNetworkCanvas() {
 		}
 
 		resize();
-		animate();
+		if (!reduceMotion) {
+			animate();
+		}
 		window.addEventListener("resize", resize);
-		window.addEventListener("mousemove", handleMouseMove);
+		if (!reduceMotion) window.addEventListener("mousemove", handleMouseMove);
 
 		return () => {
 			window.removeEventListener("resize", resize);
