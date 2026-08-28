@@ -21,6 +21,14 @@ const GENERIC_LOGIN_ERROR =
 const GENERIC_REGISTRATION_ERROR =
 	"No pudimos completar el registro. Intentá nuevamente más tarde.";
 const PASSWORD_MISMATCH_ERROR = "Las contraseñas no coinciden.";
+const REGISTRATION_RATE_LIMIT_ERROR =
+	"Demasiados intentos en poco tiempo. Esperá unos minutos y volvé a intentar; también revisá tu carpeta de spam.";
+const REGISTRATION_EMAIL_EXISTS_ERROR =
+	"Ya existe una cuenta con ese correo electrónico. Ingresá con tus datos o restablecé tu contraseña.";
+const REGISTRATION_WEAK_PASSWORD_ERROR =
+	"La contraseña debe tener al menos 8 caracteres.";
+const REGISTRATION_INVALID_EMAIL_ERROR =
+	"El correo electrónico ingresado no es válido.";
 const INVALID_FULL_NAME_ERROR = "Ingresá un nombre de hasta 160 caracteres.";
 const REGISTRATION_CONFIRMATION_MESSAGE =
 	"Cuenta creada. Revisá tu correo y confirmá la dirección para activar el acceso.";
@@ -76,6 +84,45 @@ export async function signIn(
 	redirect(destination);
 }
 
+function mapRegistrationError(error: {
+	message?: string;
+	code?: string;
+	status?: number;
+} | null): string {
+	const message = error?.message?.toLowerCase() ?? "";
+	const code = error?.code?.toLowerCase() ?? "";
+	const status = error?.status;
+
+	if (
+		status === 429 ||
+		message.includes("rate limit") ||
+		message.includes("over_email_send_rate_limit") ||
+		message.includes("too many") ||
+		code.includes("over_email_send_rate_limit")
+	) {
+		return REGISTRATION_RATE_LIMIT_ERROR;
+	}
+	if (
+		message.includes("already been registered") ||
+		message.includes("already registered") ||
+		message.includes("exists") ||
+		code === "email_exists"
+	) {
+		return REGISTRATION_EMAIL_EXISTS_ERROR;
+	}
+	if (message.includes("weak password") || message.includes("at least 6")) {
+		return REGISTRATION_WEAK_PASSWORD_ERROR;
+	}
+	if (
+		message.includes("invalid email") ||
+		message.includes("email not allowed") ||
+		message.includes("invalid_claim")
+	) {
+		return REGISTRATION_INVALID_EMAIL_ERROR;
+	}
+	return GENERIC_REGISTRATION_ERROR;
+}
+
 export async function signUp(
 	_previousState: RegistrationActionState,
 	formData: FormData,
@@ -112,6 +159,10 @@ export async function signUp(
 		return { error: PASSWORD_MISMATCH_ERROR, message: null };
 	}
 
+	if (password.length < 8) {
+		return { error: REGISTRATION_WEAK_PASSWORD_ERROR, message: null };
+	}
+
 	try {
 		const supabase = await createClient();
 		const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -125,7 +176,10 @@ export async function signUp(
 		});
 
 		if (authError || !authData.user) {
-			return { error: GENERIC_REGISTRATION_ERROR, message: null };
+			return {
+				error: authError ? mapRegistrationError(authError) : GENERIC_REGISTRATION_ERROR,
+				message: null,
+			};
 		}
 
 		if (!authData.session) {
