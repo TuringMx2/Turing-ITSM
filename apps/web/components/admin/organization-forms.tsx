@@ -37,6 +37,7 @@ type ProjectOption = { id: string; name: string; teamId: string; teamName?: stri
 type InternalMember = {
   id: string;
   email: string;
+  full_name: string;
   role: "admin" | "support_agent" | "superadmin";
 };
 
@@ -229,6 +230,10 @@ export function EditInternalMemberForm({
       onSuccess={onSuccess}
     >
       <input name="userId" type="hidden" value={member.id} />
+      <label>
+        <span>Nombre completo</span>
+        <input autoComplete="name" defaultValue={member.full_name === member.email ? "" : member.full_name} maxLength={160} name="fullName" placeholder="Nombre y apellido" spellCheck={false} />
+      </label>
       <label>
         <span>Correo electrónico</span>
         <input autoComplete="email" defaultValue={member.email} name="email" required spellCheck={false} type="email" />

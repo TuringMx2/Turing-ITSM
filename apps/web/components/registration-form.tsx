@@ -157,17 +157,6 @@ export function RegistrationForm() {
 						</Link>
 					</form>
 				</section>
-
-				<aside
-					aria-label="Información del registro"
-					className="test-users-card glass-card"
-				>
-					<p className="eyebrow">Identidad y acceso</p>
-					<h2>Acceso operativo</h2>
-					<p className="muted">
-						Tu cuenta se crea como integrante de soporte y queda vinculada al espacio de trabajo activo.
-					</p>
-				</aside>
 			</div>
 		</div>
 	);

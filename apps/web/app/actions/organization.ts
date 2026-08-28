@@ -656,21 +656,28 @@ export async function updateInternalMember(
   if (targetError || !member) return targetError ?? failure("La cuenta interna no está disponible.");
 
   const roleChanged = parsed.data.role !== member.role;
+  const fullNameChanged =
+    typeof parsed.data.fullName === "string" && parsed.data.fullName !== member.full_name;
   if (roleChanged && parsed.data.role === "superadmin" && !canAssignSuperadmin(context.role)) {
     return failure("Solo un superadmin activo puede asignar el rol Superadmin.");
   }
 
   const { data: updatedProfile, error: profileError } = roleChanged
-    ? await supabase.rpc("provision_profile", {
-        p_user_id: parsed.data.userId,
-        p_role: parsed.data.role,
-        p_tenant_id: context.tenantId,
-        p_full_name: member.full_name,
-        p_email: parsed.data.email,
-      }).then(({ error }) => ({ data: error ? null : { id: parsed.data.userId }, error }))
+      ? await supabase.rpc("provision_profile", {
+          p_user_id: parsed.data.userId,
+          p_role: parsed.data.role,
+          p_tenant_id: context.tenantId,
+          p_full_name: parsed.data.fullName ?? member.full_name,
+          p_email: parsed.data.email,
+        }).then(({ error }) => ({ data: error ? null : { id: parsed.data.userId }, error }))
     : await supabase
         .from("profiles")
-        .update({ email: parsed.data.email })
+        .update({
+          email: parsed.data.email,
+          ...(fullNameChanged && parsed.data.fullName
+            ? { full_name: parsed.data.fullName }
+            : {}),
+        })
         .eq("tenant_id", context.tenantId)
         .eq("id", parsed.data.userId)
         .select("id")
@@ -691,7 +698,7 @@ export async function updateInternalMember(
     } else {
       await supabase
         .from("profiles")
-        .update({ email: member.email })
+        .update({ email: member.email, full_name: member.full_name })
         .eq("tenant_id", context.tenantId)
         .eq("id", parsed.data.userId);
     }
@@ -724,7 +731,7 @@ export async function updateInternalMember(
     } else {
       await supabase
         .from("profiles")
-        .update({ email: member.email })
+        .update({ email: member.email, full_name: member.full_name })
         .eq("tenant_id", context.tenantId)
         .eq("id", parsed.data.userId);
     }

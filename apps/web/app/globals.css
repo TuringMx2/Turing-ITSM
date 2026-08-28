@@ -138,8 +138,8 @@ p {
 
 .login-layout {
 	display: grid;
-	grid-template-columns: minmax(320px, 460px) minmax(280px, 380px);
-	gap: 24px;
+	grid-template-columns: minmax(320px, 460px);
+	justify-content: center;
 	position: relative;
 	width: min(100%, 920px);
 	z-index: 1;

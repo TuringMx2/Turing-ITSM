@@ -176,9 +176,15 @@ const optionalPasswordSchema = z.preprocess(
   z.string().min(8).max(128).optional(),
 );
 
+const optionalFullNameSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  fullNameSchema.optional(),
+);
+
 export const updateInternalMemberSchema = z.object({
   userId: organizationIdSchema,
   email: z.string().trim().email().max(254).transform((value) => value.toLowerCase()),
+  fullName: optionalFullNameSchema,
   password: optionalPasswordSchema,
   role: z.enum(["admin", "support_agent", "superadmin"]),
 });

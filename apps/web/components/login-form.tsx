@@ -7,7 +7,7 @@ import {
 	signIn,
 	type LoginActionState,
 } from "@/app/actions/auth";
-import { AmbientField } from "@/components/landing/ambient-field";
+import { NeuralNetworkCanvas } from "@/components/neural-network-canvas";
 
 const initialState: LoginActionState = { error: null };
 
@@ -21,7 +21,7 @@ export function LoginForm() {
 
 	return (
 		<div className="login-scene">
-			<AmbientField />
+			<NeuralNetworkCanvas />
 			<div className="login-layout">
 				<section
 					className="login-card glass-card"
@@ -79,17 +79,6 @@ export function LoginForm() {
 						</Link>
 					</form>
 				</section>
-
-				<aside
-					className="test-users-card glass-card"
-					aria-label="Acceso seguro al espacio de trabajo"
-				>
-					<p className="eyebrow">Identidad y acceso</p>
-					<h2>Espacio protegido</h2>
-					<p className="muted">
-						Usá tu cuenta asignada. La sesión y el rol se verifican antes de abrir el espacio de trabajo.
-					</p>
-				</aside>
 			</div>
 		</div>
 	);
