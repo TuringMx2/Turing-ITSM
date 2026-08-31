@@ -1275,6 +1275,12 @@ p {
 	padding: 14px 16px;
 }
 
+.daily-tu.is-pending {
+	background: #eef0ff;
+	border-color: rgb(79 92 240 / 28%);
+	box-shadow: 0 12px 28px rgb(79 92 240 / 8%);
+}
+
 .daily-tu-status {
 	border-radius: 999px;
 	font-size: 0.8rem;
@@ -1290,9 +1296,15 @@ p {
 }
 
 .daily-tu-status.pending {
-	background: #fff7ed;
-	border: 1px solid #fed7aa;
-	color: #c2410c;
+	background: #4f5cf0;
+	border: 1px solid #4f5cf0;
+	box-shadow: 0 6px 14px rgb(79 92 240 / 18%);
+	color: #ffffff;
+}
+
+.daily-tu.is-pending .daily-tu-action {
+	border-color: rgb(79 92 240 / 32%);
+	color: #3545bf;
 }
 
 .daily-tu-action {

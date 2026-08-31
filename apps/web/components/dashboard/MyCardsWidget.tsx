@@ -54,7 +54,11 @@ export async function MyCardsWidget() {
                 <span className="muted small-text task-card-meta">
                   {t.column_name} · Vence {formatDueDate(t.due_date)}
                 </span>
-                <Link className="task-card-link" href={`/projects/${t.project_id}/board`}>
+                <Link
+                  className="task-card-link"
+                  href={`/projects/${t.project_id}/board`}
+                  prefetch={false}
+                >
                   Abrir tablero →
                 </Link>
               </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useId, useRef, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import {
   createDailyQuestion,
   deactivateDailyQuestion,
@@ -50,18 +51,24 @@ function MutationForm({
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
   const errorRef = useRef<HTMLParagraphElement>(null);
-  const successFired = useRef(false);
+  const handledSuccess = useRef<DailyActionState | null>(null);
+  const onSuccessRef = useRef(onSuccess);
+  const router = useRouter();
+
+  useEffect(() => {
+    onSuccessRef.current = onSuccess;
+  }, [onSuccess]);
 
   useEffect(() => {
     if (state.status === "error") errorRef.current?.focus();
   }, [state.status]);
 
   useEffect(() => {
-    if (state.status === "success" && !successFired.current) {
-      successFired.current = true;
-      onSuccess?.();
-    }
-  }, [state.status, onSuccess]);
+    if (state.status !== "success" || handledSuccess.current === state) return;
+    handledSuccess.current = state;
+    onSuccessRef.current?.();
+    router.refresh();
+  }, [router, state]);
 
   return (
     <form action={formAction} className={className}>
@@ -284,16 +291,21 @@ export function GenerateDailyRunForm({ teams, schedules }: { teams: DailyTeamRow
 }
 
 export function DailyResponseForm({
+  localDate,
   pendingRuns,
   runQuestions,
   onSuccess,
 }: {
+  localDate: string;
   pendingRuns: DailyRunRow[];
   runQuestions: DailyRunQuestionRow[];
   onSuccess?: () => void;
 }) {
+  const pendingRunsForDate = pendingRuns.filter((run) => run.local_date === localDate);
+  const pendingRunIdsForDate = new Set(pendingRunsForDate.map((run) => run.id));
+  const runQuestionsForDate = runQuestions.filter((question) => pendingRunIdsForDate.has(question.run_id));
   const questions = Array.from(
-    runQuestions
+    runQuestionsForDate
       .slice()
       .sort((left, right) => left.position - right.position)
       .reduce((byId, question) => {
@@ -303,6 +315,10 @@ export function DailyResponseForm({
       .values(),
   );
 
+  if (pendingRunsForDate.length === 0) {
+    return <p className="muted">La ejecución seleccionada ya no está disponible para esta fecha.</p>;
+  }
+
   return (
     <MutationForm
       action={submitDailyResponse}
@@ -311,11 +327,12 @@ export function DailyResponseForm({
       submitLabel="Enviar respuesta Daily"
       className="card daily-response-form"
     >
-      {pendingRuns.map((run) => <input key={run.id} name="runId" type="hidden" value={run.id} />)}
+      <input name="localDate" type="hidden" value={localDate} />
+      {pendingRunsForDate.map((run) => <input key={run.id} name="runId" type="hidden" value={run.id} />)}
       <div className="daily-response-intro">
         <p className="eyebrow">Respuesta única</p>
         <h2>Respondé las preguntas de tus ejecuciones pendientes</h2>
-        <p className="muted">Las preguntas compartidas se responden una sola vez y se aplican a las {pendingRuns.length} ejecuciones visibles.</p>
+        <p className="muted">Las preguntas compartidas se responden una sola vez y se aplican a las {pendingRunsForDate.length} ejecuciones visibles.</p>
       </div>
       {questions.map((question, index) => (
         <label className="daily-answer-field" key={question.question_id}>
