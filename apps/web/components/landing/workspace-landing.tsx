@@ -63,10 +63,18 @@ export function WorkspaceLanding({ displayName }: WorkspaceLandingProps) {
 						tareas y mantener el trabajo en movimiento.
 					</p>
 					<nav aria-label="Accesos principales" className="tmx-landing__actions">
-						<Link className="tmx-landing__primary-action" href="/workspace/dashboard">
+						<Link
+							className="tmx-landing__primary-action"
+							href="/workspace/dashboard"
+							prefetch={false}
+						>
 							Abrir Dashboard
 						</Link>
-						<Link className="tmx-landing__secondary-action" href="/workspace/daily">
+						<Link
+							className="tmx-landing__secondary-action"
+							href="/workspace/daily"
+							prefetch={false}
+						>
 							Ir a Daily
 						</Link>
 					</nav>

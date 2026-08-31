@@ -76,7 +76,9 @@ export type DailySubmissionRow = {
 
 export type DailySubmissionReportRunRow = {
   submission_id: string;
+  run_id: string;
   team_id: string;
+  local_date: string;
 };
 
 export type DailySubmissionAnswerRow = {
@@ -524,11 +526,18 @@ export async function submitDailyResponse(
   formData: FormData,
 ): Promise<DailyActionState> {
   const runIds = formData.getAll("runId").map(String);
+  const localDate = formData.get("localDate");
   const answers = Array.from(formData.entries())
     .filter(([name]) => name.startsWith("answer:"))
     .map(([name, value]) => ({ questionId: name.slice("answer:".length), answer: String(value) }));
-  const parsed = submitDailyResponseSchema.safeParse({ runIds, answers });
-  if (!parsed.success) return failure("Respondé cada pregunta con entre 1 y 4000 caracteres.");
+  const parsed = submitDailyResponseSchema.safeParse({ runIds, localDate, answers });
+  if (!parsed.success) {
+    return failure(
+      parsed.error.issues.some((issue) => issue.path[0] === "localDate")
+        ? "La fecha seleccionada no es válida."
+        : "Respondé cada pregunta con entre 1 y 4000 caracteres.",
+    );
+  }
 
   const supabase = await createClient();
   const { context, error: contextError } = await resolveInternalContext(supabase);
@@ -540,9 +549,13 @@ export async function submitDailyResponse(
       question_id: answer.questionId,
       answer: answer.answer.trim(),
     })),
+    p_local_date: parsed.data.localDate,
   });
   if (error) {
     const message = error.message.toLowerCase();
+    if (message.includes("do not match the selected local date")) {
+      return failure("La ejecución no coincide con la fecha seleccionada. Actualizá la página.");
+    }
     if (message.includes("already has a submission")) {
       return failure("Una de estas ejecuciones ya fue respondida. Actualizá la página.");
     }
@@ -621,7 +634,7 @@ export async function getDailyAdminWorkspace(): Promise<{
   const submissionIds = submissions.map((submission) => submission.id);
   const [submissionRunsResult, answersResult] = submissionIds.length
     ? await Promise.all([
-        supabase.from("daily_submission_runs").select("submission_id, team_id").eq("tenant_id", context.tenantId).in("submission_id", submissionIds),
+        supabase.from("daily_submission_runs").select("submission_id, run_id, team_id").eq("tenant_id", context.tenantId).in("submission_id", submissionIds),
         supabase.from("daily_submission_answers").select("submission_id, question_text, answer_text").eq("tenant_id", context.tenantId).in("submission_id", submissionIds),
       ])
     : [{ data: [], error: null }, { data: [], error: null }];
@@ -630,7 +643,9 @@ export async function getDailyAdminWorkspace(): Promise<{
   }
 
   const submittedRunIds = new Set((submissionLinksResult.data ?? []).map((row) => String(row.run_id)));
-  const pendingRuns = ((pendingRunsSourceResult.data ?? []) as DailyRunRow[]).filter((run) => !submittedRunIds.has(run.id));
+  const allRuns = (pendingRunsSourceResult.data ?? []) as DailyRunRow[];
+  const localDateByRunId = new Map(allRuns.map((run) => [run.id, run.local_date]));
+  const pendingRuns = allRuns.filter((run) => !submittedRunIds.has(run.id));
   const pendingRunIds = pendingRuns.map((run) => run.id);
   const pendingRunQuestionsResult = pendingRunIds.length
     ? await supabase
@@ -661,7 +676,10 @@ export async function getDailyAdminWorkspace(): Promise<{
       runs: (runsResult.data ?? []) as DailyRunRow[],
       reportTeams: (reportTeamsResult.data ?? []) as DailyTeamRow[],
       submissions,
-      submissionRuns: (submissionRunsResult.data ?? []) as DailySubmissionReportRunRow[],
+      submissionRuns: (submissionRunsResult.data ?? []).map((row) => ({
+        ...(row as { submission_id: string; run_id: string; team_id: string }),
+        local_date: localDateByRunId.get(String(row.run_id)) ?? "",
+      })),
       submissionAnswers: (answersResult.data ?? []) as DailySubmissionAnswerRow[],
       people,
       currentUserId: context.userId,
@@ -692,7 +710,9 @@ export async function getDailyMemberWorkspace(): Promise<{
   }
 
   const submittedRunIds = new Set((submissionLinksResult.data ?? []).map((row) => String(row.run_id)));
-  const pendingRuns = ((runsResult.data ?? []) as DailyRunRow[]).filter((run) => !submittedRunIds.has(run.id));
+  const allRuns = (runsResult.data ?? []) as DailyRunRow[];
+  const localDateByRunId = new Map(allRuns.map((run) => [run.id, run.local_date]));
+  const pendingRuns = allRuns.filter((run) => !submittedRunIds.has(run.id));
   const pendingRunIds = pendingRuns.map((run) => run.id);
   const history = (historyResult.data ?? []) as DailySubmissionRow[];
   const historyIds = history.map((submission) => submission.id);
@@ -707,7 +727,7 @@ export async function getDailyMemberWorkspace(): Promise<{
       ? supabase.from("daily_submission_runs").select("submission_id").eq("tenant_id", context.tenantId).eq("user_id", context.userId).in("submission_id", historyIds)
       : Promise.resolve({ data: [], error: null }),
     submissionIds.length
-      ? supabase.from("daily_submission_runs").select("submission_id, team_id").eq("tenant_id", context.tenantId).in("submission_id", submissionIds)
+      ? supabase.from("daily_submission_runs").select("submission_id, run_id, team_id").eq("tenant_id", context.tenantId).in("submission_id", submissionIds)
       : Promise.resolve({ data: [], error: null }),
     submissionIds.length
       ? supabase.from("daily_submission_answers").select("submission_id, question_text, answer_text").eq("tenant_id", context.tenantId).in("submission_id", submissionIds)
@@ -728,7 +748,10 @@ export async function getDailyMemberWorkspace(): Promise<{
       historyRunCounts: countById((historyLinksResult.data ?? []) as Array<{ submission_id: string }>),
       reportTeams: (reportTeamsResult.data ?? []) as DailyTeamRow[],
       submissions,
-      submissionRuns: (submissionRunsResult.data ?? []) as DailySubmissionReportRunRow[],
+      submissionRuns: (submissionRunsResult.data ?? []).map((row) => ({
+        ...(row as { submission_id: string; run_id: string; team_id: string }),
+        local_date: localDateByRunId.get(String(row.run_id)) ?? "",
+      })),
       submissionAnswers: (answersResult.data ?? []) as DailySubmissionAnswerRow[],
       people: (peopleResult.data ?? []) as Array<{ id: string; full_name: string }>,
       currentUserId: context.userId,

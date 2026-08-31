@@ -95,6 +95,7 @@ export function TopNavigation({ user }: TopNavigationProps) {
 					aria-current={homeActive ? "page" : undefined}
 					className="tmx-top-nav__brand"
 					href="/workspace/home"
+					prefetch={false}
 					translate="no"
 				>
 					<span aria-hidden="true">
@@ -114,6 +115,7 @@ export function TopNavigation({ user }: TopNavigationProps) {
 								className={`tmx-nav-link${active ? " is-active" : ""}`}
 								href={href}
 								key={module.slug}
+								prefetch={false}
 							>
 								{module.label}
 							</Link>
@@ -155,10 +157,11 @@ export function TopNavigation({ user }: TopNavigationProps) {
 												href={href}
 												key={module.slug}
 												onClick={() => setModulesOpenPath(null)}
-											>
-												<strong>{module.label}</strong>
-												<span>{module.description}</span>
-											</Link>
+														prefetch={false}
+													>
+														<strong>{module.label}</strong>
+														<span>{module.description}</span>
+													</Link>
 										);
 									})}
 								</div>

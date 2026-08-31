@@ -27,6 +27,7 @@ const expectedMigrations = [
   "202608250900_authorization_refinement.sql",
   "202608251000_daily_run_scheduler.sql",
   "202608251100_registration_full_name.sql",
+  "202608251200_daily_selected_date_integrity.sql",
 ];
 
 const expectedLegacy = new Map([
@@ -56,7 +57,7 @@ check("legacy migration directory exists", existsSync(legacyDir));
 const migrationNames = existsSync(migrationsDir)
   ? readdirSync(migrationsDir).filter((name) => name.endsWith(".sql")).sort()
   : [];
-check("executable chain contains exactly the twelve expected migrations", JSON.stringify(migrationNames) === JSON.stringify(expectedMigrations));
+check("executable chain contains exactly the thirteen expected migrations", JSON.stringify(migrationNames) === JSON.stringify(expectedMigrations));
 check("migration filenames are already in deterministic lexical order", JSON.stringify(migrationNames) === JSON.stringify([...migrationNames].sort()));
 
 for (const [name, expected] of expectedLegacy) {
@@ -74,6 +75,7 @@ const migrationSql = migrationNames.map((name) => ({
   sql: readFileSync(join(migrationsDir, name), "utf8"),
 }));
 const allSql = migrationSql.map(({ sql }) => sql).join("\n");
+const selectedDateMigrationSql = migrationSql.find(({ name }) => name === "202608251200_daily_selected_date_integrity.sql")?.sql ?? "";
 
 for (const { name, sql } of migrationSql) {
   const dollarQuotes = sql.match(/\$\$/g)?.length ?? 0;
@@ -123,7 +125,9 @@ const requiredControls = [
   ["comment RPC revokes all API roles before exact grant", /revoke execute on function public\.add_ticket_public_comment_by_token\(text, text\) from public, anon, authenticated, service_role;[\s\S]*grant execute on function public\.add_ticket_public_comment_by_token\(text, text\) to anon, authenticated, service_role;/i],
   ["token mint RPC revokes all API roles before exact grant", /revoke execute on function public\.create_ticket_access_token\(uuid, text, text, timestamptz, uuid\) from public, anon, authenticated, service_role;[\s\S]*grant execute on function public\.create_ticket_access_token\(uuid, text, text, timestamptz, uuid\) to authenticated, service_role;/i],
   ["profile provisioning RPC revokes all API roles before exact grant", /revoke execute on function public\.provision_profile\(uuid, public\.app_role, uuid, text, text\) from public, anon, authenticated, service_role;[\s\S]*grant execute on function public\.provision_profile\(uuid, public\.app_role, uuid, text, text\) to authenticated;/i],
-  ["Daily submission RPC revokes all API roles before exact grant", /revoke execute on function public\.submit_daily_response\(uuid\[\], jsonb\) from public, anon, authenticated, service_role;\s*grant execute on function public\.submit_daily_response\(uuid\[\], jsonb\) to authenticated;/i],
+  ["Daily submission RPC revokes all API roles before exact grant", /revoke execute on function public\.submit_daily_response\(uuid\[\], jsonb, date\) from public, anon, authenticated, service_role;\s*grant execute on function public\.submit_daily_response\(uuid\[\], jsonb, date\) to authenticated;/i],
+  ["Daily submission RPC requires the selected local date", /create or replace function public\.submit_daily_response\([\s\S]*p_local_date date/i],
+  ["Daily submission RPC rejects run dates that differ from the selected date", /create or replace function public\.submit_daily_response\([\s\S]*r\.local_date is distinct from p_local_date[\s\S]*The Daily runs do not match the selected local date[\s\S]*insert into public\.daily_submissions/i],
   ["anonymous cannot mint ticket tokens", !/grant execute on function public\.create_ticket_access_token[^;]*\bto\b[^;]*\banon\b/i.test(allSql)],
   ["token mint uses explicit trusted service-role claim", /coalesce\(auth\.role\(\), ''\) <> 'service_role'[\s\S]*private\.is_tenant_admin\(v_tenant_id\)/i],
   ["token mint does not trust a null auth uid", !/create_ticket_access_token[\s\S]*auth\.uid\(\) is null/i.test(allSql)],
@@ -180,6 +184,13 @@ const requiredControls = [
 for (const [label, expression] of requiredControls) {
   check(label, expression instanceof RegExp ? expression.test(allSql) : expression);
 }
+
+check(
+  "Daily selected-date migration removes the old RPC signature before installing the new one",
+  /drop function if exists public\.submit_daily_response\(uuid\[\], jsonb\);[\s\S]*create or replace function public\.submit_daily_response\([\s\S]*p_local_date date/i.test(
+    selectedDateMigrationSql,
+  ),
+);
 
 console.log("\nStatic verification only: PostgreSQL execution and authenticated RLS scenarios remain required.");
 process.exitCode = failures === 0 ? 0 : 1;

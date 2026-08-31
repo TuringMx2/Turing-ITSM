@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import {
   addProjectMembership,
   addTeamMembership,
@@ -64,17 +65,26 @@ function MutationForm({
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
   const errorRef = useRef<HTMLParagraphElement>(null);
+  const handledSuccess = useRef<OrganizationActionState | null>(null);
+  const onSuccessRef = useRef(onSuccess);
   const closeDialog = useDialogClose();
+  const router = useRouter();
+
+  useEffect(() => {
+    onSuccessRef.current = onSuccess;
+  }, [onSuccess]);
 
   useEffect(() => {
     if (state.status === "error") errorRef.current?.focus();
   }, [state.status]);
 
   useEffect(() => {
-    if (state.status !== "success") return;
-    const timeout = window.setTimeout(() => onSuccess?.(), 1800);
+    if (state.status !== "success" || handledSuccess.current === state) return;
+    handledSuccess.current = state;
+    router.refresh();
+    const timeout = window.setTimeout(() => onSuccessRef.current?.(), 1800);
     return () => window.clearTimeout(timeout);
-  }, [onSuccess, state.status]);
+  }, [router, state]);
 
   return (
     <form action={formAction} className={`${compact ? "admin-form compact" : "admin-form"}${dialog ? " dialog-form" : ""}`}>

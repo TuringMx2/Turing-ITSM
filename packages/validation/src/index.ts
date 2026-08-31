@@ -89,6 +89,7 @@ export const generateDailyRunSchema = z.object({
 
 export const submitDailyResponseSchema = z.object({
   runIds: z.array(dailyEntityIdSchema).min(1).max(100).refine((values) => new Set(values).size === values.length),
+  localDate: z.string().date(),
   answers: z
     .array(
       z.object({

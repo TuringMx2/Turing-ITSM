@@ -1,13 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { isAdmin, type InternalRole } from "@/lib/rbac";
 import type {
   DailyAdminData,
   DailyMemberData,
   DailySubmissionAnswerRow,
-  DailySubmissionRow,
   DailyTeamRow,
 } from "@/app/actions/daily-runs";
 import { Dialog, useDialogClose } from "@/components/admin/dialog";
@@ -46,10 +44,6 @@ function localDateKeyInTz(date: Date, timezoneName: string): string {
   }
 }
 
-function submittedDateKey(value: string, timezoneName: string): string {
-  return localDateKeyInTz(new Date(value), timezoneName);
-}
-
 function DialogCloseButton({ label = "Cancelar" }: { label?: string }) {
   const close = useDialogClose();
   return (
@@ -82,7 +76,6 @@ type DailyExperienceProps = {
 };
 
 export function DailyExperience({ role, data }: DailyExperienceProps) {
-  const router = useRouter();
   const hasAdminAccess = isAdmin(role);
   const adminData = hasAdminAccess ? (data as DailyAdminData) : null;
 
@@ -92,8 +85,8 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
   const people = data.people;
   const reportTeams = data.reportTeams;
   const currentUserId = data.currentUserId;
-  const pendingRuns = data.pendingRuns ?? [];
-  const runQuestions = data.runQuestions ?? [];
+  const pendingRuns = data.pendingRuns;
+  const runQuestions = data.runQuestions;
 
   const [teamFilter, setTeamFilter] = useState<string>("all");
   const [showingConfig, setShowingConfig] = useState(false);
@@ -103,6 +96,8 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
 
   const [referenceTimezone, setReferenceTimezone] = useState<string>("UTC");
   useEffect(() => {
+    // Keep the UTC server/client snapshot stable, then adopt the browser timezone after hydration.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setReferenceTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   }, []);
 
@@ -127,6 +122,14 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
     }
     return result;
   }, [submissionRuns]);
+  const submissionIdsForDate = useMemo(
+    () => new Set(
+      submissionRuns
+        .filter((linkedRun) => linkedRun.local_date === selectedDate)
+        .map((linkedRun) => linkedRun.submission_id),
+    ),
+    [submissionRuns, selectedDate],
+  );
 
   const selectedDateObj = days.find((date) => utcDateKey(date) === selectedDate) ?? new Date(`${selectedDate}T00:00:00Z`);
   const longDateLabel = longDateFmt.format(selectedDateObj);
@@ -135,10 +138,10 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
     () =>
       submissions.filter(
         (submission) =>
-          submittedDateKey(submission.submitted_at, referenceTimezone) === selectedDate &&
+          submissionIdsForDate.has(submission.id) &&
           (teamFilter === "all" || teamIdsBySubmission.get(submission.id)?.has(teamFilter)),
       ),
-    [submissions, selectedDate, teamFilter, teamIdsBySubmission],
+    [submissions, submissionIdsForDate, teamFilter, teamIdsBySubmission],
   );
 
   const mySubmissionForDate = submissionsForDate.find((submission) => submission.user_id === currentUserId);
@@ -147,7 +150,10 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
     () => pendingRuns.filter((run) => run.local_date === selectedDate),
     [pendingRuns, selectedDate],
   );
-  const pendingRunIdsForDate = new Set(pendingRunsForDate.map((run) => run.id));
+  const pendingRunIdsForDate = useMemo(
+    () => new Set(pendingRunsForDate.map((run) => run.id)),
+    [pendingRunsForDate],
+  );
   const runQuestionsForDate = useMemo(
     () => runQuestions.filter((question) => pendingRunIdsForDate.has(question.run_id)),
     [runQuestions, pendingRunIdsForDate],
@@ -199,8 +205,7 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
 
   const handleRespondSuccess = useCallback(() => {
     setModalOpen(false);
-    router.refresh();
-  }, [router]);
+  }, []);
 
   const ctaLabel = hasResponded ? "Ver mis respuestas" : "Responder Daily";
   const ctaDisabled = !hasResponded && !canRespond;
@@ -318,7 +323,7 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
             </div>
           ) : null}
 
-          <section className="daily-tu" aria-live="polite">
+          <section className={hasResponded ? "daily-tu" : "daily-tu is-pending"} aria-live="polite">
             {hasResponded ? (
               <>
                 <span className="daily-tu-status answered">✓ Respondido</span>
@@ -386,7 +391,8 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
         {modalMode === "respond" ? (
           <>
             <DailyResponseForm
-              key={`respond-${respondNonce}`}
+              key={`respond-${respondNonce}-${selectedDate}`}
+              localDate={selectedDate}
               onSuccess={handleRespondSuccess}
               pendingRuns={pendingRunsForDate}
               runQuestions={runQuestionsForDate}
