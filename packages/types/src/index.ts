@@ -63,6 +63,7 @@ export interface DailyQuestion {
   id: string;
   tenantId: string;
   questionText: string;
+  semanticKey?: DailySemanticKey | null;
   isActive: boolean;
   createdAt: string;
   deactivatedAt?: string | null;
@@ -92,13 +93,43 @@ export interface DailyRunQuestion {
   runId: string;
   questionId: string;
   questionText: string;
+  semanticKey?: DailySemanticKey | null;
   position: number;
 }
+
+export type DailySemanticKey = "completed_work" | "planned_work" | "blockers";
 
 export interface DailySubmission {
   id: string;
   userId: string;
   submittedAt: string;
+}
+
+export type DailyTaskStatus = "planned" | "completed" | "deleted" | "carried";
+export type DailyTaskCompletionOutcome = "completed" | "deleted" | "carried";
+
+export interface DailyTaskItem {
+  id: string;
+  tenantId: string;
+  teamId: string;
+  userId: string;
+  logicalDate: string;
+  title: string;
+  position: number;
+  carriedFromId?: string | null;
+  status: DailyTaskStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DailyTaskCompletion {
+  id: string;
+  tenantId: string;
+  teamId: string;
+  userId: string;
+  logicalDate: string;
+  submittedAt: string;
+  timezoneSnapshot: string;
 }
 
 export interface TaskComment {

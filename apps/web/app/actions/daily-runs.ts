@@ -10,6 +10,7 @@ import {
 } from "@turing-itsm/validation";
 import { revalidatePath } from "next/cache";
 import { isAdmin, isInternalRole, type InternalRole } from "@/lib/rbac";
+import { getDailyTaskWorkspace, type DailyTaskWorkspace } from "@/app/actions/daily-tasks";
 import { createClient } from "@/utils/supabase/server";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
@@ -28,6 +29,7 @@ export type DailyActionState = {
 export type DailyQuestionRow = {
   id: string;
   question_text: string;
+  semantic_key: string | null;
   is_active: boolean;
   created_at: string;
   deactivated_at: string | null;
@@ -65,6 +67,7 @@ export type DailyRunQuestionRow = {
   run_id: string;
   question_id: string;
   question_text: string;
+  semantic_key: string | null;
   position: number;
 };
 
@@ -101,6 +104,7 @@ export type DailyAdminData = {
   currentUserId: string;
   pendingRuns: DailyRunRow[];
   runQuestions: DailyRunQuestionRow[];
+  taskWorkspace: DailyTaskWorkspace;
 };
 
 export type DailyMemberData = {
@@ -114,6 +118,7 @@ export type DailyMemberData = {
   submissionAnswers: DailySubmissionAnswerRow[];
   people: Array<{ id: string; full_name: string }>;
   currentUserId: string;
+  taskWorkspace: DailyTaskWorkspace;
 };
 
 const success = (message: string): DailyActionState => ({ status: "success", message });
@@ -543,13 +548,15 @@ export async function submitDailyResponse(
   const { context, error: contextError } = await resolveInternalContext(supabase);
   if (!context) return failure(contextError ?? "Se requiere una cuenta interna activa.");
 
-  const { error } = await supabase.rpc("submit_daily_response", {
+  const { error } = await supabase.rpc("submit_daily_response_with_tasks", {
     p_run_ids: parsed.data.runIds,
     p_answers: parsed.data.answers.map((answer) => ({
       question_id: answer.questionId,
       answer: answer.answer.trim(),
     })),
     p_local_date: parsed.data.localDate,
+    // The RPC derives planned tasks from the canonical planned-work answer.
+    p_planned_task_titles: [],
   });
   if (error) {
     const message = error.message.toLowerCase();
@@ -565,10 +572,18 @@ export async function submitDailyResponse(
     if (message.includes("answers must")) {
       return failure("Las respuestas no coinciden con las preguntas pendientes. Actualizá la página e intentá nuevamente.");
     }
+    if (message.includes("exactly one team")) {
+      return failure("Seleccioná un solo equipo antes de responder Daily.");
+    }
+    if (message.includes("planned-work question")) {
+      return failure("La pregunta de planificación no está disponible. Actualizá la página.");
+    }
+    if (message.includes("planned work is closed") || message.includes("must contain at least one task")) {
+      return failure("La planificación de hoy está cerrada o necesita al menos una tarea.");
+    }
     return failure("No se pudo registrar la respuesta Daily. Intentá nuevamente.");
   }
 
-  revalidateDaily();
   return success("Respuesta Daily registrada. Las respuestas enviadas no se pueden editar.");
 }
 
@@ -587,34 +602,33 @@ function dailyReportWindow(): { cutoff: string; now: string } {
   };
 }
 
-export async function getDailyAdminWorkspace(): Promise<{
+export async function getDailyAdminWorkspace(requestedTeamId?: string): Promise<{
   data?: DailyAdminData;
   error?: string;
 }> {
   const supabase = await createClient();
   const { context, error: contextError } = await resolveAdminContext(supabase);
   if (!context) return { error: contextError ?? "Se requiere acceso de administrador activo." };
+  const taskWorkspacePromise = getDailyTaskWorkspace(requestedTeamId);
 
-  const [teamsResult, reportTeamsResult, questionsResult, schedulesResult, selectionsResult, runsResult, peopleResult, pendingRunsSourceResult, submissionLinksResult, adminProfileResult] =
+  const [teamsResult, reportTeamsResult, questionsResult, schedulesResult, selectionsResult, runsResult, peopleResult, pendingRunsSourceResult, submissionLinksResult] =
     await Promise.all([
       supabase.from("teams").select("id, name").eq("tenant_id", context.tenantId).is("archived_at", null).order("name"),
       supabase.from("teams").select("id, name").eq("tenant_id", context.tenantId).order("name"),
-      supabase.from("daily_questions").select("id, question_text, is_active, created_at, deactivated_at").eq("tenant_id", context.tenantId).order("is_active", { ascending: false }).order("created_at", { ascending: false }),
+      supabase.from("daily_questions").select("id, question_text, semantic_key, is_active, created_at, deactivated_at").eq("tenant_id", context.tenantId).order("is_active", { ascending: false }).order("created_at", { ascending: false }),
       supabase.from("team_daily_schedules").select("id, team_id, timezone_name, local_time, scheduled_weekdays, response_window, is_active").eq("tenant_id", context.tenantId),
       supabase.from("team_daily_questions").select("team_id, question_id, position").eq("tenant_id", context.tenantId).order("position"),
       supabase.from("daily_runs").select("id, team_id, schedule_id, scheduled_for, due_at, local_date, timezone_snapshot").eq("tenant_id", context.tenantId).order("scheduled_for", { ascending: false }).limit(20),
-      supabase.from("profiles").select("id, full_name").eq("tenant_id", context.tenantId).eq("role", "support_agent"),
+      supabase.from("profiles").select("id, full_name").eq("tenant_id", context.tenantId).eq("status", "active").in("role", ["support_agent", "admin", "superadmin"]),
       supabase.from("daily_runs").select("id, team_id, schedule_id, scheduled_for, due_at, local_date, timezone_snapshot").eq("tenant_id", context.tenantId).order("scheduled_for", { ascending: true }),
       supabase.from("daily_submission_runs").select("submission_id, run_id").eq("tenant_id", context.tenantId).eq("user_id", context.userId),
-      supabase.from("profiles").select("id, full_name").eq("tenant_id", context.tenantId).eq("id", context.userId),
     ]);
 
-  if ([teamsResult.error, reportTeamsResult.error, questionsResult.error, schedulesResult.error, selectionsResult.error, runsResult.error, peopleResult.error, pendingRunsSourceResult.error, submissionLinksResult.error, adminProfileResult.error].some(Boolean)) {
+  if ([teamsResult.error, reportTeamsResult.error, questionsResult.error, schedulesResult.error, selectionsResult.error, runsResult.error, peopleResult.error, pendingRunsSourceResult.error, submissionLinksResult.error].some(Boolean)) {
     return { error: "No se pudo cargar la información Daily. Actualizá la página e intentá nuevamente." };
   }
 
-  const supportAgentIds = (peopleResult.data ?? []).map((person) => String(person.id));
-  const responderIds = supportAgentIds.includes(context.userId) ? supportAgentIds : [...supportAgentIds, context.userId];
+  const responderIds = (peopleResult.data ?? []).map((person) => String(person.id));
   const window = dailyReportWindow();
   const submissionsResult = responderIds.length
     ? await supabase
@@ -650,7 +664,7 @@ export async function getDailyAdminWorkspace(): Promise<{
   const pendingRunQuestionsResult = pendingRunIds.length
     ? await supabase
         .from("daily_run_questions")
-        .select("run_id, question_id, question_text, position")
+        .select("run_id, question_id, question_text, semantic_key, position")
         .eq("tenant_id", context.tenantId)
         .in("run_id", pendingRunIds)
         .order("position")
@@ -660,12 +674,11 @@ export async function getDailyAdminWorkspace(): Promise<{
   }
   const runQuestions = (pendingRunQuestionsResult.data ?? []) as DailyRunQuestionRow[];
 
-  const people = (peopleResult.data ?? [])
-    .concat(adminProfileResult.data ?? [])
-    .filter((person, index, list) => list.findIndex((other) => other.id === person.id) === index) as Array<{
+  const people = (peopleResult.data ?? []) as Array<{
     id: string;
     full_name: string;
   }>;
+  const taskWorkspaceResult = await taskWorkspacePromise;
 
   return {
     data: {
@@ -685,11 +698,18 @@ export async function getDailyAdminWorkspace(): Promise<{
       currentUserId: context.userId,
       pendingRuns,
       runQuestions,
+      taskWorkspace: taskWorkspaceResult.data ?? {
+        status: "unavailable",
+        message: taskWorkspaceResult.error ?? "No se pudo cargar tu espacio de tareas Daily.",
+        tasks: [],
+        yesterdayCompletedTasks: [],
+        teamOptions: [],
+      },
     },
   };
 }
 
-export async function getDailyMemberWorkspace(): Promise<{
+export async function getDailyMemberWorkspace(requestedTeamId?: string): Promise<{
   data?: DailyMemberData;
   error?: string;
 }> {
@@ -697,6 +717,7 @@ export async function getDailyMemberWorkspace(): Promise<{
   const { context, error: contextError } = await resolveInternalContext(supabase);
   if (!context) return { error: contextError ?? "Se requiere una cuenta interna activa." };
 
+  const taskWorkspacePromise = getDailyTaskWorkspace(requestedTeamId);
   const window = dailyReportWindow();
   const [runsResult, submissionLinksResult, historyResult, reportTeamsResult, submissionsResult] = await Promise.all([
     supabase.from("daily_runs").select("id, team_id, schedule_id, scheduled_for, due_at, local_date, timezone_snapshot").eq("tenant_id", context.tenantId).order("scheduled_for", { ascending: true }),
@@ -709,8 +730,11 @@ export async function getDailyMemberWorkspace(): Promise<{
     return { error: "No se pudieron cargar tus Daily pendientes. Actualizá la página e intentá nuevamente." };
   }
 
+  const taskWorkspaceResult = await taskWorkspacePromise;
+  const taskWorkspace = taskWorkspaceResult.data;
+  const selectedTeamId = taskWorkspace?.status === "ready" ? taskWorkspace.teamId : undefined;
   const submittedRunIds = new Set((submissionLinksResult.data ?? []).map((row) => String(row.run_id)));
-  const allRuns = (runsResult.data ?? []) as DailyRunRow[];
+  const allRuns = ((runsResult.data ?? []) as DailyRunRow[]).filter((run) => selectedTeamId ? run.team_id === selectedTeamId : false);
   const localDateByRunId = new Map(allRuns.map((run) => [run.id, run.local_date]));
   const pendingRuns = allRuns.filter((run) => !submittedRunIds.has(run.id));
   const pendingRunIds = pendingRuns.map((run) => run.id);
@@ -721,7 +745,7 @@ export async function getDailyMemberWorkspace(): Promise<{
   const submissionUserIds = Array.from(new Set(submissions.map((submission) => submission.user_id)));
   const [questionsResult, historyLinksResult, submissionRunsResult, answersResult, peopleResult] = await Promise.all([
     pendingRunIds.length
-      ? supabase.from("daily_run_questions").select("run_id, question_id, question_text, position").eq("tenant_id", context.tenantId).in("run_id", pendingRunIds).order("position")
+      ? supabase.from("daily_run_questions").select("run_id, question_id, question_text, semantic_key, position").eq("tenant_id", context.tenantId).in("run_id", pendingRunIds).order("position")
       : Promise.resolve({ data: [], error: null }),
     historyIds.length
       ? supabase.from("daily_submission_runs").select("submission_id").eq("tenant_id", context.tenantId).eq("user_id", context.userId).in("submission_id", historyIds)
@@ -755,6 +779,13 @@ export async function getDailyMemberWorkspace(): Promise<{
       submissionAnswers: (answersResult.data ?? []) as DailySubmissionAnswerRow[],
       people: (peopleResult.data ?? []) as Array<{ id: string; full_name: string }>,
       currentUserId: context.userId,
+      taskWorkspace: taskWorkspace ?? {
+        status: "unavailable",
+        message: "No se pudo cargar tu espacio de tareas Daily.",
+        tasks: [],
+        yesterdayCompletedTasks: [],
+        teamOptions: [],
+      },
     },
   };
 }
