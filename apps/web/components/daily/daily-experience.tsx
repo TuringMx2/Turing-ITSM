@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { isAdmin, type InternalRole } from "@/lib/rbac";
 import type {
   DailyAdminData,
@@ -8,10 +8,13 @@ import type {
   DailySubmissionAnswerRow,
   DailyTeamRow,
 } from "@/app/actions/daily-runs";
+import { DailyCompletionChecklist } from "./daily-completion-checklist";
+import { DailyPlanTaskEntry } from "./daily-plan-task-entry";
 import { Dialog, useDialogClose } from "@/components/admin/dialog";
 import { DailyResponseForm } from "./daily-forms";
 import { DailyResponsesByQuestion } from "./daily-responses-by-question";
 import { DailyConfigPanel } from "./daily-config-panel";
+import { DailyPhaseRefresh } from "./daily-phase-refresh";
 
 const dayLabelFmt = new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "short", timeZone: "UTC" });
 const weekdayFmt = new Intl.DateTimeFormat("es-AR", { weekday: "short", timeZone: "UTC" });
@@ -26,30 +29,35 @@ function utcDateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-function localDateKeyInTz(date: Date, timezoneName: string): string {
-  try {
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: timezoneName,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    })
-      .formatToParts(date)
-      .filter((part) => part.type !== "literal")
-      .map((part) => [part.type, part.value]);
-    const map = Object.fromEntries(parts) as Record<string, string>;
-    return `${map.year}-${map.month}-${map.day}`;
-  } catch {
-    return utcDateKey(date);
-  }
-}
-
 function DialogCloseButton({ label = "Cancelar" }: { label?: string }) {
   const close = useDialogClose();
   return (
     <button className="secondary-button" onClick={() => close?.()} type="button">
       {label}
     </button>
+  );
+}
+
+function DailyTeamSelector({
+  teams,
+  action,
+  selectedTeamId,
+}: {
+  teams: DailyTeamRow[];
+  action: string;
+  selectedTeamId?: string;
+}) {
+  return (
+    <form action={action} className="daily-team-context-form" method="get">
+      <label>
+        <span>Equipo Daily</span>
+        <select defaultValue={selectedTeamId ?? ""} name="dailyTeam" required>
+          <option disabled value="">Seleccioná un equipo…</option>
+          {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+        </select>
+      </label>
+      <button className="secondary-button" type="submit">Ver equipo</button>
+    </form>
   );
 }
 
@@ -87,32 +95,26 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
   const currentUserId = data.currentUserId;
   const pendingRuns = data.pendingRuns;
   const runQuestions = data.runQuestions;
+  const taskWorkspace = "taskWorkspace" in data ? data.taskWorkspace : undefined;
 
-  const [teamFilter, setTeamFilter] = useState<string>("all");
+  const [teamFilter, setTeamFilter] = useState<string>(taskWorkspace?.teamId ?? "all");
   const [showingConfig, setShowingConfig] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"respond" | "readonly">("respond");
   const [respondNonce, setRespondNonce] = useState(0);
 
-  const [referenceTimezone, setReferenceTimezone] = useState<string>("UTC");
-  useEffect(() => {
-    // Keep the UTC server/client snapshot stable, then adopt the browser timezone after hydration.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setReferenceTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
-  }, []);
+  const todayKey = taskWorkspace?.localDate ?? "";
+  const [selectedDate, setSelectedDate] = useState<string>(todayKey);
 
   const days = useMemo(() => {
-    const todayLocalKey = localDateKeyInTz(new Date(), referenceTimezone);
-    const todayUtc = new Date(`${todayLocalKey}T00:00:00Z`);
+    if (!todayKey) return [];
+    const todayUtc = new Date(`${todayKey}T00:00:00Z`);
     return Array.from({ length: 7 }, (_, index) => {
       const date = new Date(todayUtc);
       date.setUTCDate(todayUtc.getUTCDate() - (6 - index));
       return date;
     });
-  }, [referenceTimezone]);
-  const todayKey = localDateKeyInTz(new Date(), referenceTimezone);
-  const [selectedDate, setSelectedDate] = useState<string>(todayKey);
-
+  }, [todayKey]);
   const teamIdsBySubmission = useMemo(() => {
     const result = new Map<string, Set<string>>();
     for (const linkedRun of submissionRuns) {
@@ -124,15 +126,17 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
   }, [submissionRuns]);
   const submissionIdsForDate = useMemo(
     () => new Set(
-      submissionRuns
-        .filter((linkedRun) => linkedRun.local_date === selectedDate)
-        .map((linkedRun) => linkedRun.submission_id),
+      selectedDate
+        ? submissionRuns
+            .filter((linkedRun) => linkedRun.local_date === selectedDate)
+            .map((linkedRun) => linkedRun.submission_id)
+        : submissions.map((submission) => submission.id),
     ),
-    [submissionRuns, selectedDate],
+    [submissionRuns, selectedDate, submissions],
   );
 
-  const selectedDateObj = days.find((date) => utcDateKey(date) === selectedDate) ?? new Date(`${selectedDate}T00:00:00Z`);
-  const longDateLabel = longDateFmt.format(selectedDateObj);
+  const selectedDateObj = selectedDate ? (days.find((date) => utcDateKey(date) === selectedDate) ?? new Date(`${selectedDate}T00:00:00Z`)) : null;
+  const longDateLabel = selectedDateObj ? longDateFmt.format(selectedDateObj) : "los últimos 7 días";
 
   const submissionsForDate = useMemo(
     () =>
@@ -147,8 +151,8 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
   const mySubmissionForDate = submissionsForDate.find((submission) => submission.user_id === currentUserId);
 
   const pendingRunsForDate = useMemo(
-    () => pendingRuns.filter((run) => run.local_date === selectedDate),
-    [pendingRuns, selectedDate],
+    () => pendingRuns.filter((run) => run.local_date === selectedDate && (teamFilter === "all" || run.team_id === teamFilter)),
+    [pendingRuns, selectedDate, teamFilter],
   );
   const pendingRunIdsForDate = useMemo(
     () => new Set(pendingRunsForDate.map((run) => run.id)),
@@ -159,8 +163,19 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
     [runQuestions, pendingRunIdsForDate],
   );
 
+  const responseTeamId = teamFilter === "all" ? undefined : teamFilter;
+  const responsePendingRuns = useMemo(
+    () => responseTeamId ? pendingRunsForDate.filter((run) => run.team_id === responseTeamId) : [],
+    [pendingRunsForDate, responseTeamId],
+  );
+  const responseRunIds = useMemo(() => new Set(responsePendingRuns.map((run) => run.id)), [responsePendingRuns]);
+  const responseRunQuestions = useMemo(
+    () => runQuestionsForDate.filter((question) => responseRunIds.has(question.run_id)),
+    [responseRunIds, runQuestionsForDate],
+  );
   const hasResponded = Boolean(mySubmissionForDate);
-  const canRespond = pendingRunsForDate.length > 0;
+  const canRespond = responsePendingRuns.length > 0;
+  const needsTeamSelection = hasAdminAccess && taskWorkspace?.status === "select_team";
 
   const answeredCount = useMemo(
     () => new Set(submissionsForDate.map((submission) => submission.user_id)).size,
@@ -185,12 +200,13 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
       .filter((text): text is string => Boolean(text));
   }, [adminData, teamFilter]);
 
-  const firstDayKey = utcDateKey(days[0]);
-  const lastDayKey = utcDateKey(days[days.length - 1]);
-  const atStart = selectedDate <= firstDayKey;
-  const atEnd = selectedDate >= lastDayKey;
+  const firstDayKey = days.length > 0 ? utcDateKey(days[0]) : "";
+  const lastDayKey = days.length > 0 ? utcDateKey(days[days.length - 1]) : "";
+  const atStart = !selectedDate || selectedDate <= firstDayKey;
+  const atEnd = !selectedDate || selectedDate >= lastDayKey;
 
   function shiftDate(delta: number) {
+    if (days.length === 0) return;
     const index = days.findIndex((date) => utcDateKey(date) === selectedDate);
     const baseIndex = index === -1 ? days.length - 1 : index;
     const nextIndex = Math.min(Math.max(baseIndex + delta, 0), days.length - 1);
@@ -198,6 +214,7 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
   }
 
   function openModal() {
+    if (!hasResponded && !canRespond) return;
     setModalMode(hasResponded ? "readonly" : "respond");
     setRespondNonce((value) => value + 1);
     setModalOpen(true);
@@ -209,6 +226,11 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
 
   const ctaLabel = hasResponded ? "Ver mis respuestas" : "Responder Daily";
   const ctaDisabled = !hasResponded && !canRespond;
+  const responseHint = needsTeamSelection
+    ? "Seleccioná un equipo para ver tus tareas y responder Daily."
+    : pendingRunsForDate.length > 0 && !canRespond
+      ? "Seleccioná un solo equipo para responder Daily."
+      : "No hay una ejecución pendiente para este día.";
 
   const emptyState = submissionsForDate.length === 0;
 
@@ -222,8 +244,11 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
     ? submissionAnswers.filter((answer) => answer.submission_id === mySubmissionForDate.id)
     : [];
 
+  const taskForSelectedDate = taskWorkspace?.localDate === selectedDate;
+
   return (
     <section className="module-page daily-page daily-experience">
+      <DailyPhaseRefresh timezoneName={taskWorkspace?.timezoneName} />
       <header className="daily-hero">
         <div className="daily-hero-intro">
           <p className="eyebrow">Daily</p>
@@ -254,11 +279,11 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
         </div>
       </header>
 
-      {ctaDisabled ? <p className="muted small-text daily-cta-hint">No hay una ejecución pendiente para este día.</p> : null}
+      {ctaDisabled ? <p className="muted small-text daily-cta-hint">{responseHint}</p> : null}
 
       {!showingConfig ? (
         <>
-          <nav className="daily-day-nav" aria-label="Navegación por día">
+          {days.length > 0 ? <nav className="daily-day-nav" aria-label="Navegación por día">
             <button
               aria-label="Día anterior"
               className="daily-day-nav-arrow"
@@ -295,7 +320,51 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
             >
               <span aria-hidden="true">›</span>
             </button>
-          </nav>
+          </nav> : null}
+
+          {taskWorkspace?.status === "select_team" ? (
+            <section className="card daily-team-context-card">
+              <p className="eyebrow">Contexto requerido</p>
+              <h2>Seleccioná un equipo</h2>
+              <p className="muted">Tus ejecuciones y tareas Daily se mantienen separadas por equipo.</p>
+              <DailyTeamSelector action="/workspace/daily" teams={taskWorkspace.teamOptions} />
+            </section>
+          ) : taskWorkspace?.status === "unavailable" ? (
+            <section className="card daily-team-context-card">
+              <p className="eyebrow">Daily</p>
+              <h2>El plan no está disponible</h2>
+              <p className="muted">{taskWorkspace.message}</p>
+            </section>
+          ) : taskWorkspace && taskForSelectedDate ? (
+            <section className="card daily-task-workspace">
+              <header className="daily-task-workspace-header">
+                <div>
+                  <p className="eyebrow">{taskWorkspace.teamName}</p>
+                  <h2>Trabajo de hoy</h2>
+                </div>
+                {taskWorkspace.teamOptions.length > 1 ? (
+                  <DailyTeamSelector action="/workspace/daily" selectedTeamId={taskWorkspace.teamId} teams={taskWorkspace.teamOptions} />
+                ) : null}
+              </header>
+              {taskWorkspace.phase === "planning" ? (
+                <DailyPlanTaskEntry teamId={taskWorkspace.teamId!} tasks={taskWorkspace.tasks} />
+              ) : taskWorkspace.completionSubmitted ? (
+                <p className="action-message success" role="status">Ya registraste el cierre Daily de hoy.</p>
+              ) : taskWorkspace.tasks.length > 0 ? (
+                <DailyCompletionChecklist logicalDate={taskWorkspace.localDate!} tasks={taskWorkspace.tasks} teamId={taskWorkspace.teamId!} />
+              ) : (
+                <p className="empty-state">No hay tareas planificadas para cerrar hoy.</p>
+              )}
+              {taskWorkspace.yesterdayCompletedTasks.length > 0 ? (
+                <div className="daily-yesterday-evidence">
+                  <p className="eyebrow">Ayer · evidencia de trabajo terminado</p>
+                  <ul className="daily-task-list">
+                    {taskWorkspace.yesterdayCompletedTasks.map((task) => <li key={task.id}>{task.title}</li>)}
+                  </ul>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
 
           {reportTeams.length > 1 ? (
             <div className="daily-filter-bar daily-team-filter">
@@ -336,7 +405,7 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
               <>
                 <span className="daily-tu-status pending">Sin responder</span>
                 <span className="muted small-text">
-                  {canRespond ? "Respondé para compartir tu actualización con el equipo." : "No hay una ejecución pendiente para este día."}
+                   {canRespond ? "Respondé para compartir tu actualización con el equipo." : responseHint}
                 </span>
                 {canRespond ? (
                   <button className="secondary-button daily-tu-action" onClick={openModal} type="button">
@@ -389,18 +458,27 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
 
       <Dialog description={modalDescription} onOpenChange={setModalOpen} open={modalOpen} title={modalTitle}>
         {modalMode === "respond" ? (
-          <>
-            <DailyResponseForm
-              key={`respond-${respondNonce}-${selectedDate}`}
-              localDate={selectedDate}
-              onSuccess={handleRespondSuccess}
-              pendingRuns={pendingRunsForDate}
-              runQuestions={runQuestionsForDate}
-            />
-            <div className="dialog-form-footer">
-              <DialogCloseButton label="Cancelar" />
-            </div>
-          </>
+          canRespond ? (
+            <>
+              <DailyResponseForm
+                key={`respond-${respondNonce}-${selectedDate}`}
+                localDate={selectedDate}
+                onSuccess={handleRespondSuccess}
+                pendingRuns={responsePendingRuns}
+                runQuestions={responseRunQuestions}
+              />
+              <div className="dialog-form-footer">
+                <DialogCloseButton label="Cancelar" />
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="muted">{responseHint}</p>
+              <div className="dialog-form-footer">
+                <DialogCloseButton label="Cerrar" />
+              </div>
+            </>
+          )
         ) : (
           <>
             <ReadonlyAnswers answers={readonlyAnswers} />

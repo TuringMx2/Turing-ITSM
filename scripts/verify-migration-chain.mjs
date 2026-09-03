@@ -28,6 +28,7 @@ const expectedMigrations = [
   "202608251000_daily_run_scheduler.sql",
   "202608251100_registration_full_name.sql",
   "202608251200_daily_selected_date_integrity.sql",
+  "202608251300_daily_task_planning_completion.sql",
 ];
 
 const expectedLegacy = new Map([
@@ -57,7 +58,7 @@ check("legacy migration directory exists", existsSync(legacyDir));
 const migrationNames = existsSync(migrationsDir)
   ? readdirSync(migrationsDir).filter((name) => name.endsWith(".sql")).sort()
   : [];
-check("executable chain contains exactly the thirteen expected migrations", JSON.stringify(migrationNames) === JSON.stringify(expectedMigrations));
+check("executable chain contains exactly the fourteen expected migrations", JSON.stringify(migrationNames) === JSON.stringify(expectedMigrations));
 check("migration filenames are already in deterministic lexical order", JSON.stringify(migrationNames) === JSON.stringify([...migrationNames].sort()));
 
 for (const [name, expected] of expectedLegacy) {
@@ -128,6 +129,24 @@ const requiredControls = [
   ["Daily submission RPC revokes all API roles before exact grant", /revoke execute on function public\.submit_daily_response\(uuid\[\], jsonb, date\) from public, anon, authenticated, service_role;\s*grant execute on function public\.submit_daily_response\(uuid\[\], jsonb, date\) to authenticated;/i],
   ["Daily submission RPC requires the selected local date", /create or replace function public\.submit_daily_response\([\s\S]*p_local_date date/i],
   ["Daily submission RPC rejects run dates that differ from the selected date", /create or replace function public\.submit_daily_response\([\s\S]*r\.local_date is distinct from p_local_date[\s\S]*The Daily runs do not match the selected local date[\s\S]*insert into public\.daily_submissions/i],
+  ["Daily questions carry stable semantic metadata", /alter table public\.daily_questions[\s\S]*add column semantic_key text[\s\S]*daily_questions_semantic_key_check/i],
+  ["Daily task items are separate from project tasks and tenant scoped", /create table public\.daily_task_items[\s\S]*tenant_id uuid not null[\s\S]*daily_task_items_team_tenant_fk/i],
+  ["Daily task items preserve team and user ownership", /create table public\.daily_task_items[\s\S]*foreign key \(tenant_id, team_id\)[\s\S]*foreign key \(tenant_id, user_id\)/i],
+  ["Daily task inserts use an authenticated server RPC", allSql.includes("create function public.add_daily_task_items") && allSql.includes("revoke insert, update, delete on public.daily_task_items from authenticated") && allSql.includes("grant execute on function public.add_daily_task_items(uuid, date, text[]) to authenticated;")],
+  ["Daily completion is unique per team user and logical date", /create table public\.daily_task_completions[\s\S]*unique \(tenant_id, team_id, user_id, logical_date\)/i],
+  ["Daily completion snapshots are immutable", /create function private\.prevent_daily_task_completion_change\(\)[\s\S]*Daily task completion evidence is immutable[\s\S]*create trigger prevent_daily_task_completion_item_change/i],
+  ["Daily response task wrapper derives tasks from the canonical answer", /create function public\.submit_daily_response_with_tasks\([\s\S]*p_planned_task_titles text\[\][\s\S]*task titles are never trusted[\s\S]*rq\.semantic_key = 'planned_work'[\s\S]*jsonb_array_elements\(p_answers\)[\s\S]*regexp_split_to_table[\s\S]*public\.submit_daily_response\(p_run_ids, p_answers, p_local_date\)[\s\S]*insert into public\.daily_task_items[\s\S]*revoke all on function public\.submit_daily_response_with_tasks\(uuid\[\], jsonb, date, text\[\]\) from public, anon, authenticated, service_role;[\s\S]*grant execute on function public\.submit_daily_response_with_tasks\(uuid\[\], jsonb, date, text\[\]\) to authenticated;/i],
+  ["Daily response wrapper closes the legacy authenticated alternate path", /grant execute on function public\.submit_daily_response_with_tasks\(uuid\[\], jsonb, date, text\[\]\) to authenticated;[\s\S]*revoke execute on function public\.submit_daily_response\(uuid\[\], jsonb, date\) from authenticated;/i],
+  ["Daily completion RPC uses the team IANA timezone and server cutoff", allSql.includes("v_local_now := clock_timestamp() at time zone v_schedule.timezone_name;") && allSql.includes("v_local_now::time < time '16:00'") && allSql.includes("p_logical_date <> v_local_now::date")],
+  ["Daily completion RPC locks tasks and permits only delete or carry", allSql.includes("for update") && allSql.includes("not in ('delete', 'carry')") && allSql.includes("p_unchecked_resolution = 'carry'")],
+  ["Daily completion RPC is authenticated only", /revoke all on function public\.submit_daily_task_completion\(uuid, date, uuid\[\], text\) from public, anon, authenticated, service_role;[\s\S]*grant execute on function public\.submit_daily_task_completion\(uuid, date, uuid\[\], text\) to authenticated;/i],
+  ["Daily task reads exclude team-wide member access", (() => {
+    const items = allSql.match(/create policy daily_task_items_read_scope[\s\S]*?create policy daily_task_items_insert_scope/i)?.[0] ?? "";
+    const completions = allSql.match(/create policy daily_task_completions_read_scope[\s\S]*?create policy daily_task_completion_items_read_scope/i)?.[0] ?? "";
+    const completionItems = allSql.match(/create policy daily_task_completion_items_read_scope[\s\S]*?grant select on public\.daily_task_items/i)?.[0] ?? "";
+    return [items, completions, completionItems].every((policy) => policy.includes("user_id = (select auth.uid())") && !policy.includes("private.is_team_member"));
+  })()],
+  ["Daily response task positions use the shared transaction lock", /submit_daily_response_with_tasks[\s\S]*pg_catalog\.pg_advisory_xact_lock\([\s\S]*v_tenant_id::text \|\| ':' \|\| v_team_id::text \|\| ':' \|\| p_local_date::text \|\| ':' \|\| v_user_id::text[\s\S]*select coalesce\(max\(t\.position\)/i],
   ["anonymous cannot mint ticket tokens", !/grant execute on function public\.create_ticket_access_token[^;]*\bto\b[^;]*\banon\b/i.test(allSql)],
   ["token mint uses explicit trusted service-role claim", /coalesce\(auth\.role\(\), ''\) <> 'service_role'[\s\S]*private\.is_tenant_admin\(v_tenant_id\)/i],
   ["token mint does not trust a null auth uid", !/create_ticket_access_token[\s\S]*auth\.uid\(\) is null/i.test(allSql)],

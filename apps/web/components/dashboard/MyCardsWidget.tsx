@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { listMyCards } from "@/app/actions/tasks";
+import { listMyCards, type MyCardsPage, type TasksActionResult } from "@/app/actions/tasks";
 
 const priorityLabel: Record<string, string> = {
   low: "Baja",
@@ -13,8 +13,8 @@ function formatDueDate(value: string): string {
   return dueDateFormatter.format(new Date(`${value}T00:00:00Z`));
 }
 
-export async function MyCardsWidget() {
-  const res = await listMyCards({ page: 1, pageSize: 10 });
+export async function MyCardsWidget({ result }: { result?: TasksActionResult<MyCardsPage> } = {}) {
+  const res = result ?? await listMyCards({ page: 1, pageSize: 10 });
   if (res.error) {
     return (
       <section className="card dashboard-cards-widget" aria-labelledby="dashboard-cards-title">

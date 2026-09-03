@@ -2,6 +2,7 @@ import type {
   DailySubmissionAnswerRow,
   DailySubmissionRow,
 } from "@/app/actions/daily-runs";
+import { isDailyBlockerQuestion } from "@/lib/daily";
 
 type DailyResponsesByQuestionProps = {
   submissions: DailySubmissionRow[];
@@ -15,6 +16,10 @@ type AnswerItem = {
   personName: string;
   answerText: string;
 };
+
+function isBlockerQuestion(questionText: string) {
+  return isDailyBlockerQuestion(undefined, questionText);
+}
 
 export function DailyResponsesByQuestion({
   submissions,
@@ -33,9 +38,11 @@ export function DailyResponsesByQuestion({
     answersBySubmission.set(answer.submission_id, list);
   }
 
-  const order =
+  const sourceOrder =
     orderedQuestionTexts ??
     Array.from(new Set(submissionAnswers.filter((a) => submissionIds.has(a.submission_id)).map((a) => a.question_text)));
+  const order = sourceOrder.filter((questionText) => !isBlockerQuestion(questionText));
+  order.push(...sourceOrder.filter(isBlockerQuestion));
 
   const columns = order.map((questionText) => {
     const items: AnswerItem[] = [];

@@ -1,18 +1,21 @@
 import { redirect } from "next/navigation";
-import { Suspense } from "react";
 import { AppShell } from "@/components/app-shell";
 import { RolesPermissionsAdmin } from "@/components/admin/roles-permissions-admin";
 import { DailyWorkspace } from "@/components/daily/daily-workspace";
 import { MyCardsWidget } from "@/components/dashboard/MyCardsWidget";
+import { DashboardDailyCard } from "@/components/dashboard/DashboardDailyCard";
+import { getDailyMemberWorkspace } from "@/app/actions/daily-runs";
+import { listMyCards } from "@/app/actions/tasks";
 import { WorkspaceModule } from "@/components/workspace-module";
 import { getCurrentInternalUser } from "@/lib/auth";
 import { getModuleForRole, isAdmin, roleHome } from "@/lib/rbac";
 
 type WorkspacePageProps = {
 	params: Promise<{ module: string }>;
+	searchParams?: Promise<{ dailyTeam?: string | string[] }>;
 };
 
-export default async function WorkspacePage({ params }: WorkspacePageProps) {
+export default async function WorkspacePage({ params, searchParams }: WorkspacePageProps) {
 	const [{ module }, user] = await Promise.all([
 		params,
 		getCurrentInternalUser(),
@@ -29,33 +32,21 @@ export default async function WorkspacePage({ params }: WorkspacePageProps) {
 	const isRolesPermissions = module === "roles-permisos" && isAdmin(user.role);
 	const isDaily = module === "daily";
 	const isDashboard = module === "dashboard";
+	const search = await searchParams;
+	const requestedDailyTeam = typeof search?.dailyTeam === "string" ? search.dailyTeam : undefined;
+	const dashboardData = isDashboard
+		? await Promise.all([
+				getDailyMemberWorkspace(requestedDailyTeam),
+				listMyCards({ page: 1, pageSize: 10 }),
+			])
+		: null;
 
 	return (
 		<AppShell moduleSlug={module} user={user}>
 			{isRolesPermissions ? (
-				<Suspense
-					fallback={
-						<section className="card access-denied-card" aria-busy="true">
-							<p className="eyebrow">Admin</p>
-							<h1>Loading Roles &amp; Permissions…</h1>
-							<p aria-live="polite" className="muted" role="status">Loading tenant staff, teams, projects, and assignments.</p>
-						</section>
-					}
-				>
-					<RolesPermissionsAdmin />
-				</Suspense>
+				<RolesPermissionsAdmin />
 			) : isDaily ? (
-				<Suspense
-					fallback={
-						<section className="card access-denied-card" aria-busy="true">
-							<p className="eyebrow">Daily</p>
-							<h1>Cargando Daily…</h1>
-							<p aria-live="polite" className="muted" role="status">Preparando la configuración y las respuestas del equipo.</p>
-						</section>
-					}
-				>
-					<DailyWorkspace role={user.role} />
-				</Suspense>
+				<DailyWorkspace role={user.role} teamId={requestedDailyTeam} />
 			) : isDashboard ? (
 				<section className="module-page page-stack dashboard-page">
 					<header className="page-header dashboard-page-header">
@@ -67,16 +58,10 @@ export default async function WorkspacePage({ params }: WorkspacePageProps) {
 							</p>
 						</div>
 					</header>
-					<Suspense
-						fallback={
-							<section className="card dashboard-cards-widget" aria-busy="true">
-								<h2 className="dashboard-widget-title">Mis tareas</h2>
-								<p aria-live="polite" className="muted small-text" role="status">Cargando tareas…</p>
-							</section>
-						}
-					>
-						<MyCardsWidget />
-					</Suspense>
+					<div className="dashboard-workspace-grid">
+						<DashboardDailyCard result={dashboardData?.[0] ?? { error: "No se pudo cargar Daily." }} />
+						<MyCardsWidget result={dashboardData?.[1]} />
+					</div>
 				</section>
 			) : (
 				<WorkspaceModule moduleSlug={module} role={user.role} />

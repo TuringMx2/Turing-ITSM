@@ -16,6 +16,7 @@ import {
   type DailyScheduleRow,
   type DailyTeamRow,
 } from "@/app/actions/daily-runs";
+import { isDailyPlannedWorkQuestion } from "@/lib/daily";
 
 const initialState: DailyActionState = { status: "idle", message: "" };
 
@@ -301,11 +302,10 @@ export function DailyResponseForm({
   runQuestions: DailyRunQuestionRow[];
   onSuccess?: () => void;
 }) {
-  const pendingRunsForDate = pendingRuns.filter((run) => run.local_date === localDate);
-  const pendingRunIdsForDate = new Set(pendingRunsForDate.map((run) => run.id));
-  const runQuestionsForDate = runQuestions.filter((question) => pendingRunIdsForDate.has(question.run_id));
+  const pendingRunIds = new Set(pendingRuns.map((run) => run.id));
+  const runQuestionsForPendingRuns = runQuestions.filter((question) => pendingRunIds.has(question.run_id));
   const questions = Array.from(
-    runQuestionsForDate
+    runQuestionsForPendingRuns
       .slice()
       .sort((left, right) => left.position - right.position)
       .reduce((byId, question) => {
@@ -314,8 +314,7 @@ export function DailyResponseForm({
       }, new Map<string, DailyRunQuestionRow>())
       .values(),
   );
-
-  if (pendingRunsForDate.length === 0) {
+  if (pendingRuns.length === 0) {
     return <p className="muted">La ejecución seleccionada ya no está disponible para esta fecha.</p>;
   }
 
@@ -328,21 +327,23 @@ export function DailyResponseForm({
       className="card daily-response-form"
     >
       <input name="localDate" type="hidden" value={localDate} />
-      {pendingRunsForDate.map((run) => <input key={run.id} name="runId" type="hidden" value={run.id} />)}
+      {pendingRuns.map((run) => <input key={run.id} name="runId" type="hidden" value={run.id} />)}
       <div className="daily-response-intro">
         <p className="eyebrow">Respuesta única</p>
         <h2>Respondé las preguntas de tus ejecuciones pendientes</h2>
-        <p className="muted">Las preguntas compartidas se responden una sola vez y se aplican a las {pendingRunsForDate.length} ejecuciones visibles.</p>
+        <p className="muted">Las preguntas compartidas se responden una sola vez y se aplican a las {pendingRuns.length} ejecuciones visibles.</p>
       </div>
       {questions.map((question, index) => (
         <label className="daily-answer-field" key={question.question_id}>
-          <span>{index + 1}. {question.question_text}</span>
+          <span>
+            {index + 1}. {isDailyPlannedWorkQuestion(question.semantic_key, question.question_text) ? "¿En qué trabajarás hoy?" : question.question_text}
+          </span>
           <textarea
             autoComplete="off"
             maxLength={4000}
             minLength={1}
             name={`answer:${question.question_id}`}
-            placeholder="Escribí tu respuesta…"
+            placeholder={isDailyPlannedWorkQuestion(question.semantic_key, question.question_text) ? "Una tarea por línea. Podés usar - o • como prefijo…" : "Escribí tu respuesta…"}
             required
             rows={4}
           />
