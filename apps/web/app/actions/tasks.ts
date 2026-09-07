@@ -7,6 +7,7 @@ import {
   moveTaskSchema,
   renameWorkflowColumnSchema,
   reorderWorkflowColumnSchema,
+  setTaskCurrentSprintSchema,
   taskAttachmentIdSchema,
   taskAttachmentMetadataSchema,
   taskIdInputSchema,
@@ -16,6 +17,7 @@ import {
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { isAdmin, isInternalRole, type InternalRole } from "@/lib/rbac";
+import type { TaskEstimateUnit } from "@/lib/task-estimate";
 import { createClient } from "@/utils/supabase/server";
 
 export type TasksActionResult<T = unknown> = { data?: T; error?: string };
@@ -40,7 +42,9 @@ export type BoardTask = {
   title: string;
   description: string;
   priority: "low" | "medium" | "high" | "urgent";
-  due_date: string;
+  estimate_quantity: number | null;
+  estimate_unit: TaskEstimateUnit | null;
+  is_current_sprint: boolean;
   position: number;
   assignee_ids: string[];
   assignees: ProjectMemberOption[];
@@ -85,7 +89,8 @@ export type MyCardRow = {
   title: string;
   description: string;
   priority: BoardTask["priority"];
-  due_date: string;
+  estimate_quantity: number | null;
+  estimate_unit: TaskEstimateUnit | null;
   created_at: string;
 };
 
@@ -107,7 +112,9 @@ type TaskAccess = ProjectAccess & {
     title: string;
     description: string;
     priority: "low" | "medium" | "high" | "urgent";
-    due_date: string;
+    estimate_quantity: number | null;
+    estimate_unit: TaskEstimateUnit | null;
+    is_current_sprint: boolean;
     position: number;
     created_by: string;
     created_at: string;
@@ -130,7 +137,8 @@ const myCardsRpcPayloadSchema = z.object({
       title: z.string(),
       description: z.string(),
       priority: z.enum(["low", "medium", "high", "urgent"]),
-      due_date: z.string(),
+      estimate_quantity: z.number().nullable(),
+      estimate_unit: z.enum(["hours", "days"]).nullable(),
       created_at: z.string(),
     }),
   ),
@@ -236,7 +244,7 @@ async function resolveTaskAccess(
   const { data: task, error: taskError } = await supabase
     .from("tasks")
     .select(
-      "id, project_id, column_id, title, description, priority, due_date, position, created_by, created_at, updated_at",
+      "id, project_id, column_id, title, description, priority, estimate_quantity, estimate_unit, is_current_sprint, position, created_by, created_at, updated_at",
     )
     .eq("tenant_id", actor.tenantId)
     .eq("id", taskId)
@@ -321,6 +329,7 @@ export async function getTaskBoard(
   TasksActionResult<{
     columns: BoardColumn[];
     tasks: BoardTask[];
+    allTasks: BoardTask[];
     members: ProjectMemberOption[];
     readOnly: boolean;
   }>
@@ -344,7 +353,7 @@ export async function getTaskBoard(
     supabase
       .from("tasks")
       .select(
-        "id, project_id, column_id, title, description, priority, due_date, position, created_by, created_at, updated_at",
+        "id, project_id, column_id, title, description, priority, estimate_quantity, estimate_unit, is_current_sprint, position, created_by, created_at, updated_at",
       )
       .eq("tenant_id", access.tenantId)
       .eq("project_id", access.projectId)
@@ -371,7 +380,7 @@ export async function getTaskBoard(
     assigneesByTask.set(assignment.task_id, ids);
   }
 
-  const tasks = (tasksResult.data ?? []).map((task) => {
+  const allTasks = (tasksResult.data ?? []).map((task) => {
     const assigneeIds = assigneesByTask.get(task.id) ?? [];
     return {
       ...task,
@@ -390,7 +399,8 @@ export async function getTaskBoard(
         ...column,
         position: Number(column.position),
       })) as BoardColumn[],
-      tasks,
+      tasks: allTasks.filter((task) => task.is_current_sprint),
+      allTasks,
       members,
       readOnly: !!access.archivedAt,
     },
@@ -400,9 +410,11 @@ export async function getTaskBoard(
 export async function createTask(input: {
   projectId: string;
   columnId: string;
+  isCurrentSprint: boolean;
   title: string;
   description: string;
-  dueDate: string;
+  estimateQuantity: string;
+  estimateUnit: TaskEstimateUnit;
   priority: "low" | "medium" | "high" | "urgent";
   assigneeIds: string[];
 }): Promise<TasksActionResult<BoardTask>> {
@@ -426,6 +438,7 @@ export async function createTask(input: {
     .eq("tenant_id", access.tenantId)
     .eq("project_id", access.projectId)
     .eq("column_id", parsed.data.columnId)
+    .eq("is_current_sprint", parsed.data.isCurrentSprint)
     .order("position", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -439,13 +452,15 @@ export async function createTask(input: {
       column_id: parsed.data.columnId,
       title: parsed.data.title,
       description: parsed.data.description,
-      due_date: parsed.data.dueDate,
+      estimate_quantity: parsed.data.estimateQuantity,
+      estimate_unit: parsed.data.estimateUnit,
+      is_current_sprint: parsed.data.isCurrentSprint,
       priority: parsed.data.priority,
       position,
       created_by: access.userId,
     })
     .select(
-      "id, project_id, column_id, title, description, priority, due_date, position, created_by, created_at, updated_at",
+      "id, project_id, column_id, title, description, priority, estimate_quantity, estimate_unit, is_current_sprint, position, created_by, created_at, updated_at",
     )
     .single();
   if (taskError || !task) {
@@ -488,7 +503,8 @@ export async function updateTask(input: {
   columnId: string;
   title: string;
   description: string;
-  dueDate: string;
+  estimateQuantity: string;
+  estimateUnit: TaskEstimateUnit;
   priority: "low" | "medium" | "high" | "urgent";
   assigneeIds: string[];
 }): Promise<TasksActionResult> {
@@ -514,6 +530,7 @@ export async function updateTask(input: {
       .eq("tenant_id", access.tenantId)
       .eq("project_id", access.projectId)
       .eq("column_id", parsed.data.columnId)
+      .eq("is_current_sprint", access.task.is_current_sprint)
       .order("position", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -528,7 +545,8 @@ export async function updateTask(input: {
       column_id: parsed.data.columnId,
       title: parsed.data.title,
       description: parsed.data.description,
-      due_date: parsed.data.dueDate,
+      estimate_quantity: parsed.data.estimateQuantity,
+      estimate_unit: parsed.data.estimateUnit,
       priority: parsed.data.priority,
       position,
     })
@@ -545,7 +563,8 @@ export async function updateTask(input: {
         column_id: access.task.column_id,
         title: access.task.title,
         description: access.task.description,
-        due_date: access.task.due_date,
+        estimate_quantity: access.task.estimate_quantity,
+        estimate_unit: access.task.estimate_unit,
         priority: access.task.priority,
         position: access.task.position,
       })
@@ -577,6 +596,9 @@ export async function moveTask(input: {
   const access = accessResult.data;
   const archivedError = archivedProjectWriteError(access);
   if (archivedError) return { error: archivedError };
+  if (!access.task.is_current_sprint) {
+    return { error: "Add this task to the current sprint before moving it on the board." };
+  }
   if (!(await verifyColumn(supabase, access, parsed.data.targetColumnId))) {
     return { error: "Select a column from this project." };
   }
@@ -586,6 +608,7 @@ export async function moveTask(input: {
     .select("id, column_id, position, updated_at, created_at")
     .eq("tenant_id", access.tenantId)
     .eq("project_id", access.projectId)
+    .eq("is_current_sprint", true)
     .order("position")
     .order("updated_at", { ascending: false })
     .order("created_at");
@@ -634,6 +657,7 @@ export async function moveTask(input: {
         .eq("tenant_id", access.tenantId)
         .eq("project_id", access.projectId)
         .eq("id", row.id)
+        .eq("is_current_sprint", true)
         .eq("column_id", before.columnId)
         .eq("position", before.position)
         .select("id")
@@ -652,6 +676,7 @@ export async function moveTask(input: {
             .eq("tenant_id", access.tenantId)
             .eq("project_id", access.projectId)
             .eq("id", appliedRow.id)
+            .eq("is_current_sprint", true)
             .eq("column_id", appliedRow.columnId)
             .eq("position", appliedRow.position);
           rollbackFailed ||= !!rollbackError;
@@ -690,6 +715,7 @@ export async function moveTask(input: {
     .eq("tenant_id", access.tenantId)
     .eq("project_id", access.projectId)
     .eq("id", access.task.id)
+    .eq("is_current_sprint", true)
     .eq("column_id", access.task.column_id)
     .eq("position", access.task.position)
     .select("id")
@@ -699,6 +725,55 @@ export async function moveTask(input: {
 
   revalidateTaskPaths(access.projectId);
   return { data: { moved: true } };
+}
+
+export async function setTaskCurrentSprint(input: {
+  taskId: string;
+  isCurrentSprint: boolean;
+}): Promise<TasksActionResult> {
+  const parsed = setTaskCurrentSprintSchema.safeParse(input);
+  if (!parsed.success) return { error: validationError() };
+
+  const supabase = await createClient();
+  const accessResult = await resolveTaskAccess(supabase, parsed.data.taskId);
+  if (!accessResult.data) return { error: accessResult.error };
+  const access = accessResult.data;
+  const archivedError = archivedProjectWriteError(access);
+  if (archivedError) return { error: archivedError };
+  if (access.task.is_current_sprint === parsed.data.isCurrentSprint) {
+    return { data: { updated: true } };
+  }
+
+  let position = access.task.position;
+  if (parsed.data.isCurrentSprint) {
+    const { data: lastTask, error: lastTaskError } = await supabase
+      .from("tasks")
+      .select("position")
+      .eq("tenant_id", access.tenantId)
+      .eq("project_id", access.projectId)
+      .eq("column_id", access.task.column_id)
+      .eq("is_current_sprint", true)
+      .order("position", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (lastTaskError) return { error: "Unable to prepare the current sprint." };
+    position = lastTask ? Number(lastTask.position) + TASK_POSITION_STEP : TASK_POSITION_STEP;
+  }
+
+  const { data: updated, error: updateError } = await supabase
+    .from("tasks")
+    .update({ is_current_sprint: parsed.data.isCurrentSprint, position })
+    .eq("tenant_id", access.tenantId)
+    .eq("project_id", access.projectId)
+    .eq("id", access.task.id)
+    .eq("is_current_sprint", access.task.is_current_sprint)
+    .select("id")
+    .maybeSingle();
+  if (updateError) return { error: safeDatabaseError(updateError, "Unable to update the sprint.") };
+  if (!updated) return { error: "The task changed while its sprint was being updated. Refresh and try again." };
+
+  revalidateTaskPaths(access.projectId);
+  return { data: { updated: true } };
 }
 
 export async function deleteTask(input: { taskId: string } | string): Promise<TasksActionResult> {

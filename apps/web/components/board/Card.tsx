@@ -3,6 +3,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { BoardTask } from "@/app/actions/tasks";
+import { formatTaskEstimate } from "@/lib/task-estimate";
 
 export type { BoardTask };
 
@@ -12,12 +13,6 @@ const priorityLabel: Record<BoardTask["priority"], string> = {
   high: "Alta",
   urgent: "Urgente",
 };
-
-const dueDateFormatter = new Intl.DateTimeFormat("es-ES", {
-  day: "2-digit",
-  month: "short",
-  timeZone: "UTC",
-});
 
 export function Card({
   task,
@@ -66,7 +61,7 @@ export function Card({
         {task.description}
       </p>
       <p className="muted small-text board-task-meta">
-        Vence <time dateTime={task.due_date}>{dueDateFormatter.format(new Date(`${task.due_date}T00:00:00Z`))}</time> · {task.assignees.length > 0
+        {formatTaskEstimate(task.estimate_quantity, task.estimate_unit)} · {task.assignees.length > 0
           ? task.assignees.map((assignee) => assignee.full_name || assignee.email).join(", ")
           : "Sin asignar"}
       </p>

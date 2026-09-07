@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { listMyCards, type MyCardsPage, type TasksActionResult } from "@/app/actions/tasks";
+import { formatTaskEstimate } from "@/lib/task-estimate";
 
 const priorityLabel: Record<string, string> = {
   low: "Baja",
@@ -7,12 +8,6 @@ const priorityLabel: Record<string, string> = {
   high: "Alta",
   urgent: "Urgente",
 };
-const dueDateFormatter = new Intl.DateTimeFormat("es", { dateStyle: "medium", timeZone: "UTC" });
-
-function formatDueDate(value: string): string {
-  return dueDateFormatter.format(new Date(`${value}T00:00:00Z`));
-}
-
 export async function MyCardsWidget({ result }: { result?: TasksActionResult<MyCardsPage> } = {}) {
   const res = result ?? await listMyCards({ page: 1, pageSize: 10 });
   if (res.error) {
@@ -52,7 +47,7 @@ export async function MyCardsWidget({ result }: { result?: TasksActionResult<MyC
               {t.description ? <p className="muted small-text task-card-description">{t.description.slice(0, 120)}</p> : null}
               <div className="task-card-footer">
                 <span className="muted small-text task-card-meta">
-                  {t.column_name} · Vence {formatDueDate(t.due_date)}
+                  {t.column_name} · {formatTaskEstimate(t.estimate_quantity, t.estimate_unit)}
                 </span>
                 <Link
                   className="task-card-link"

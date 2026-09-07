@@ -60,7 +60,9 @@ export function DashboardDailyCard({ result }: { result: { data?: DailyMemberDat
     );
   }
 
-  const todayPendingRuns = data.pendingRuns.filter((run) => run.local_date === workspace.localDate);
+  const selectedTeamPendingRuns = data.pendingRuns.filter(
+    (run) => run.team_id === workspace.teamId && run.local_date === workspace.localDate,
+  );
 
   return (
     <section className="card dashboard-daily-card" aria-labelledby="dashboard-daily-title">
@@ -70,11 +72,11 @@ export function DashboardDailyCard({ result }: { result: { data?: DailyMemberDat
           <p className="eyebrow">{workspace.teamName}</p>
           <h2 className="dashboard-widget-title" id="dashboard-daily-title">Daily</h2>
         </div>
-        <Link className="task-card-link" href={`/workspace/daily?dailyTeam=${workspace.teamId}`}>Abrir Daily →</Link>
+        <Link className="task-card-link" href="/workspace/daily">Abrir Daily →</Link>
       </header>
       {workspace.phase === "planning" ? (
-        todayPendingRuns.length > 0 ? (
-          <DailyResponseForm localDate={workspace.localDate!} pendingRuns={todayPendingRuns} runQuestions={data.runQuestions} />
+        selectedTeamPendingRuns.length > 0 ? (
+          <DailyResponseForm localDate={workspace.localDate!} pendingRuns={selectedTeamPendingRuns} runQuestions={data.runQuestions} />
         ) : (
           <>
             <p className="muted">No hay una ejecución Daily pendiente para hoy. Podés sumar tareas a tu plan.</p>

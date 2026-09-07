@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { updateSession } from "./utils/supabase/middleware";
-import { isAdmin, isInternalRole, isSuperAdmin } from "./lib/rbac";
+import { isAdmin, isInternalRole } from "./lib/rbac";
 
 const PUBLIC_PATHS = ["/login", "/register", "/_next", "/favicon", "/api"];
 const PROTECTED_PATHS = ["/workspace", "/dashboard", "/daily", "/projects", "/admin"];
@@ -63,7 +63,7 @@ export async function middleware(request: NextRequest) {
   }
 
   if (
-    (matchesRoute(pathname, "/admin") && !isSuperAdmin(profile.role)) ||
+    (matchesRoute(pathname, "/admin") && !isAdmin(profile.role)) ||
     (matchesRoute(pathname, "/workspace/roles-permisos") && !isAdmin(profile.role))
   ) {
     return redirectWithSession(request, sessionResponse, "/workspace/dashboard");

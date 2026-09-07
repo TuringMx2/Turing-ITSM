@@ -8,6 +8,7 @@ export type InternalRole = Extract<AppRole, "support_agent" | "admin" | "superad
 export type UserRole = AppRole;
 
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
+export type TaskEstimateUnit = "hours" | "days";
 
 export interface ProjectWorkflowColumn {
   id: string;
@@ -51,7 +52,9 @@ export interface Task {
   title: string;
   description: string;
   priority: TaskPriority;
-  dueDate: string;
+  estimateQuantity: number | null;
+  estimateUnit: TaskEstimateUnit | null;
+  isCurrentSprint: boolean;
   position: number;
   assigneeIds: string[];
   createdBy: string;

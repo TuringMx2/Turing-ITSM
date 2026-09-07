@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getCurrentInternalUser } from "@/lib/auth";
 import { listProjects } from "@/app/actions/projects";
 import { AppShell } from "@/components/app-shell";
-import { isSuperAdmin } from "@/lib/rbac";
+import { isAdmin } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +12,6 @@ const projectDateFormatter = new Intl.DateTimeFormat("es", { dateStyle: "medium"
 export default async function WorkerProjectsPage() {
   const user = await getCurrentInternalUser();
   if (!user) redirect("/login");
-  if (!isSuperAdmin(user.role)) redirect("/workspace/dashboard");
 
   const res = await listProjects({ page: 1, pageSize: 50 });
   const data = res.data as unknown as { rows: Array<{ id: string; name: string; description: string | null; created_at: string }>; count: number } | undefined;
@@ -38,7 +37,7 @@ export default async function WorkerProjectsPage() {
           <header className="section-heading project-directory-header">
             <h2 id="project-list-title">Proyectos</h2>
             <span className="count-pill project-count">{data?.count ?? rows.length}</span>
-            {isSuperAdmin(user.role) ? (
+            {isAdmin(user.role) ? (
               <Link href="/workspace/roles-permisos" className="primary-link project-admin-link">
                 Administrar accesos
               </Link>

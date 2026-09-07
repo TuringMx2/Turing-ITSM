@@ -13,6 +13,7 @@ import {
   type ProjectMemberOption,
   type TaskDetail,
 } from "@/app/actions/tasks";
+import { formatTaskEstimate, type TaskEstimateUnit } from "@/lib/task-estimate";
 import { useModalFocus } from "./use-modal-focus";
 
 const kibibyteFormatter = new Intl.NumberFormat("es-ES", {
@@ -40,7 +41,8 @@ export function TaskDetailDialog({
   const [pending, startTransition] = useTransition();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [dueDate, setDueDate] = useState("");
+  const [estimateQuantity, setEstimateQuantity] = useState("");
+  const [estimateUnit, setEstimateUnit] = useState<TaskEstimateUnit>("hours");
   const [priority, setPriority] = useState<BoardTask["priority"]>("medium");
   const [columnId, setColumnId] = useState("");
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
@@ -51,7 +53,8 @@ export function TaskDetailDialog({
     detail &&
       (title !== detail.task.title ||
         description !== detail.task.description ||
-        dueDate !== detail.task.due_date ||
+        estimateQuantity !== (detail.task.estimate_quantity?.toString() ?? "") ||
+        estimateUnit !== (detail.task.estimate_unit ?? "hours") ||
         priority !== detail.task.priority ||
         columnId !== detail.task.column_id ||
         [...assigneeIds].sort().join(",") !== [...savedAssignees].sort().join(","))
@@ -77,7 +80,8 @@ export function TaskDetailDialog({
     setDetail(next);
     setTitle(next.task.title);
     setDescription(next.task.description);
-    setDueDate(next.task.due_date);
+    setEstimateQuantity(next.task.estimate_quantity?.toString() ?? "");
+    setEstimateUnit(next.task.estimate_unit ?? "hours");
     setPriority(next.task.priority);
     setColumnId(next.task.column_id);
     setAssigneeIds(next.task.assignee_ids);
@@ -99,7 +103,8 @@ export function TaskDetailDialog({
       setDetail(next);
       setTitle(next.task.title);
       setDescription(next.task.description);
-      setDueDate(next.task.due_date);
+      setEstimateQuantity(next.task.estimate_quantity?.toString() ?? "");
+      setEstimateUnit(next.task.estimate_unit ?? "hours");
       setPriority(next.task.priority);
       setColumnId(next.task.column_id);
       setAssigneeIds(next.task.assignee_ids);
@@ -130,7 +135,8 @@ export function TaskDetailDialog({
         columnId,
         title,
         description,
-        dueDate,
+        estimateQuantity,
+        estimateUnit,
         priority,
         assigneeIds,
       });
@@ -245,10 +251,12 @@ export function TaskDetailDialog({
           <>
             <form onSubmit={saveTask} className="admin-form" aria-label="Campos de la tarea">
               <h3>Campos de la tarea</h3>
+              <p className="muted small-text">Estimación actual: {formatTaskEstimate(detail.task.estimate_quantity, detail.task.estimate_unit)}</p>
               <label><span>Título</span><input data-autofocus name="title" autoComplete="off" value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={200} disabled={readOnly || pending} /></label>
               <label><span>Descripción</span><textarea name="description" autoComplete="off" value={description} onChange={(event) => setDescription(event.target.value)} required maxLength={8000} rows={5} disabled={readOnly || pending} /></label>
               <div className="board-field-grid board-field-grid-three">
-                <label><span>Fecha de vencimiento</span><input name="dueDate" type="date" autoComplete="off" value={dueDate} onChange={(event) => setDueDate(event.target.value)} required disabled={readOnly || pending} /></label>
+                <label><span>Estimación</span><input name="estimateQuantity" type="number" inputMode="decimal" min="0.01" max="99999999.99" step="0.01" autoComplete="off" value={estimateQuantity} onChange={(event) => setEstimateQuantity(event.target.value)} required disabled={readOnly || pending} /></label>
+                <label><span>Unidad</span><select name="estimateUnit" autoComplete="off" value={estimateUnit} onChange={(event) => setEstimateUnit(event.target.value as TaskEstimateUnit)} disabled={readOnly || pending}><option value="hours">Horas</option><option value="days">Días</option></select></label>
                 <label><span>Prioridad</span><select name="priority" autoComplete="off" value={priority} onChange={(event) => setPriority(event.target.value as BoardTask["priority"])} disabled={readOnly || pending}><option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></label>
                 <label><span>Columna</span><select name="columnId" autoComplete="off" value={columnId} onChange={(event) => setColumnId(event.target.value)} required disabled={readOnly || pending}>{columns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}</select></label>
               </div>

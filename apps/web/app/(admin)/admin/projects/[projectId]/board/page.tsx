@@ -3,9 +3,9 @@ import Link from "next/link";
 import { getCurrentInternalUser } from "@/lib/auth";
 import { getProject } from "@/app/actions/projects";
 import { getTaskBoard } from "@/app/actions/tasks";
-import { Board } from "@/components/board/Board";
+import { ProjectTasksWorkspace } from "@/components/board/ProjectTasksWorkspace";
 import { AppShell } from "@/components/app-shell";
-import { isSuperAdmin } from "@/lib/rbac";
+import { isAdmin } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +15,7 @@ export default async function AdminProjectBoardPage({ params }: { params: Promis
   const { projectId } = await params;
   const user = await getCurrentInternalUser();
   if (!user) redirect("/login");
-  if (!isSuperAdmin(user.role)) redirect("/workspace/dashboard");
+  if (!isAdmin(user.role)) redirect("/workspace/dashboard");
 
   const projectRes = await getProject(projectId);
   if (projectRes.error) return notFound();
@@ -38,23 +38,15 @@ export default async function AdminProjectBoardPage({ params }: { params: Promis
           </Link>
         </header>
 
-        <section className="card board-page-workspace" aria-labelledby="board-page-title">
-          <header className="section-heading board-page-toolbar">
-            <h2 id="board-page-title">Tareas</h2>
-            {board ? <span className="count-pill task-count">{board.tasks.length}</span> : null}
-            {board ? (
-              <span className="muted small-text board-page-status">
-                {board.readOnly ? "Proyecto archivado · solo lectura" : "Proyecto activo"}
-              </span>
-            ) : null}
-          </header>
+        <section className="card board-page-workspace" aria-labelledby="project-tasks-title">
           {boardResult.error ? <p className="form-error board-page-error" role="alert">No pudimos cargar el tablero. {boardResult.error}</p> : null}
           {board ? (
-            <Board
-              key={JSON.stringify([board.columns, board.tasks, board.members, board.readOnly])}
+            <ProjectTasksWorkspace
+              key={JSON.stringify([board.columns, board.tasks, board.allTasks, board.members, board.readOnly])}
               projectId={project.id}
-              initialColumns={board.columns}
-              initialTasks={board.tasks}
+              columns={board.columns}
+              currentSprintTasks={board.tasks}
+              allTasks={board.allTasks}
               members={board.members}
               readOnly={board.readOnly}
             />

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { createTask, type BoardTask, type ProjectMemberOption } from "@/app/actions/tasks";
+import type { TaskEstimateUnit } from "@/lib/task-estimate";
 import { useModalFocus } from "./use-modal-focus";
 
 export function CreateCardDialog({
@@ -21,12 +22,21 @@ export function CreateCardDialog({
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [dueDate, setDueDate] = useState("");
+  const [estimateQuantity, setEstimateQuantity] = useState("");
+  const [estimateUnit, setEstimateUnit] = useState<TaskEstimateUnit>("hours");
   const [priority, setPriority] = useState<BoardTask["priority"]>("medium");
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
+  const [isCurrentSprint, setIsCurrentSprint] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const isDirty = Boolean(title || description || dueDate || assigneeIds.length || priority !== "medium");
+  const isDirty = Boolean(
+    title ||
+      description ||
+      estimateQuantity ||
+      assigneeIds.length ||
+      priority !== "medium" ||
+      isCurrentSprint !== null,
+  );
 
   function requestClose() {
     if (pending) return;
@@ -47,13 +57,19 @@ export function CreateCardDialog({
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
+    if (isCurrentSprint === null) {
+      setError("Elegí si la tarea va al Sprint actual o al Backlog.");
+      return;
+    }
     startTransition(async () => {
       const result = await createTask({
         projectId,
         columnId,
+        isCurrentSprint,
         title,
         description,
-        dueDate,
+        estimateQuantity,
+        estimateUnit,
         priority,
         assigneeIds,
       });
@@ -93,10 +109,28 @@ export function CreateCardDialog({
           <span>Descripción</span>
           <textarea name="description" autoComplete="off" value={description} onChange={(event) => setDescription(event.target.value)} required minLength={1} maxLength={8000} rows={4} />
         </label>
+        <fieldset className="board-assignees create-task-destination">
+          <legend>¿Dónde querés crear esta tarea?</legend>
+          <label className="board-check-option">
+            <input type="radio" name="taskDestination" value="current-sprint" checked={isCurrentSprint === true} onChange={() => setIsCurrentSprint(true)} required />
+            <span>Sprint actual</span>
+          </label>
+          <label className="board-check-option">
+            <input type="radio" name="taskDestination" value="backlog" checked={isCurrentSprint === false} onChange={() => setIsCurrentSprint(false)} required />
+            <span>Backlog</span>
+          </label>
+        </fieldset>
         <div className="board-field-grid">
           <label>
-            <span>Fecha de vencimiento</span>
-            <input name="dueDate" type="date" autoComplete="off" value={dueDate} onChange={(event) => setDueDate(event.target.value)} required />
+            <span>Estimación</span>
+            <input name="estimateQuantity" type="number" inputMode="decimal" min="0.01" max="99999999.99" step="0.01" autoComplete="off" value={estimateQuantity} onChange={(event) => setEstimateQuantity(event.target.value)} required />
+          </label>
+          <label>
+            <span>Unidad</span>
+            <select name="estimateUnit" autoComplete="off" value={estimateUnit} onChange={(event) => setEstimateUnit(event.target.value as TaskEstimateUnit)}>
+              <option value="hours">Horas</option>
+              <option value="days">Días</option>
+            </select>
           </label>
           <label>
             <span>Prioridad</span>

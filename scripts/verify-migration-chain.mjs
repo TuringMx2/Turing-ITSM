@@ -29,6 +29,8 @@ const expectedMigrations = [
   "202608251100_registration_full_name.sql",
   "202608251200_daily_selected_date_integrity.sql",
   "202608251300_daily_task_planning_completion.sql",
+  "202608251400_task_effort_estimates.sql",
+  "202609051100_current_sprint_tasks.sql",
 ];
 
 const expectedLegacy = new Map([
@@ -58,7 +60,7 @@ check("legacy migration directory exists", existsSync(legacyDir));
 const migrationNames = existsSync(migrationsDir)
   ? readdirSync(migrationsDir).filter((name) => name.endsWith(".sql")).sort()
   : [];
-check("executable chain contains exactly the fourteen expected migrations", JSON.stringify(migrationNames) === JSON.stringify(expectedMigrations));
+check("executable chain contains exactly the sixteen expected migrations", JSON.stringify(migrationNames) === JSON.stringify(expectedMigrations));
 check("migration filenames are already in deterministic lexical order", JSON.stringify(migrationNames) === JSON.stringify([...migrationNames].sort()));
 
 for (const [name, expected] of expectedLegacy) {
@@ -77,6 +79,8 @@ const migrationSql = migrationNames.map((name) => ({
 }));
 const allSql = migrationSql.map(({ sql }) => sql).join("\n");
 const selectedDateMigrationSql = migrationSql.find(({ name }) => name === "202608251200_daily_selected_date_integrity.sql")?.sql ?? "";
+const taskEstimateMigrationSql = migrationSql.find(({ name }) => name === "202608251400_task_effort_estimates.sql")?.sql ?? "";
+const currentSprintMigrationSql = migrationSql.find(({ name }) => name === "202609051100_current_sprint_tasks.sql")?.sql ?? "";
 
 for (const { name, sql } of migrationSql) {
   const dollarQuotes = sql.match(/\$\$/g)?.length ?? 0;
@@ -120,6 +124,11 @@ const requiredControls = [
   ["assignee RPC revokes API roles before authenticated-only grant", /revoke all on function public\.replace_task_assignees\(uuid, uuid\[\]\)[\s\S]*from public, anon, authenticated, service_role;[\s\S]*grant execute on function public\.replace_task_assignees\(uuid, uuid\[\]\) to authenticated;/i],
   ["My Cards RPC filters current user and active projects before database pagination", /create function public\.list_my_cards[\s\S]*ta\.user_id = \(select auth\.uid\(\)\)[\s\S]*p\.archived_at is null[\s\S]*order by[\s\S]*limit least[\s\S]*offset greatest[\s\S]*count\(\*\) from visible_cards/i],
   ["My Cards RPC revokes API roles before authenticated-only grant", /revoke all on function public\.list_my_cards\(integer, integer\)[\s\S]*from public, anon, authenticated, service_role;[\s\S]*grant execute on function public\.list_my_cards\(integer, integer\) to authenticated;/i],
+  ["task estimates keep legacy due dates nullable", /alter table public\.tasks[\s\S]*alter column due_date drop not null/i.test(taskEstimateMigrationSql)],
+  ["task estimates require a complete positive quantity and supported unit", /add constraint tasks_estimate_check check \([\s\S]*estimate_quantity is null and estimate_unit is null[\s\S]*estimate_quantity > 0[\s\S]*estimate_unit in \('hours', 'days'\)/i.test(taskEstimateMigrationSql)],
+  ["replacement My Cards RPC exposes estimates without due-date sorting", /create or replace function public\.list_my_cards[\s\S]*t\.estimate_quantity[\s\S]*t\.estimate_unit[\s\S]*order by priority_rank desc, visible\.created_at desc, visible\.id[\s\S]*grant execute on function public\.list_my_cards\(integer, integer\) to authenticated;/i.test(taskEstimateMigrationSql)],
+  ["current sprint migration backfills existing tasks before requiring a destination", /add column is_current_sprint boolean[\s\S]*update public\.tasks[\s\S]*set is_current_sprint = true[\s\S]*alter column is_current_sprint set not null/i.test(currentSprintMigrationSql)],
+  ["current sprint migration indexes board ordering and filters My Cards", /create index tasks_current_sprint_project_column_position_idx[\s\S]*where is_current_sprint[\s\S]*create or replace function public\.list_my_cards[\s\S]*t\.is_current_sprint/i.test(currentSprintMigrationSql)],
   ["Daily questions are tenant-scoped", /create table public\.daily_questions[\s\S]*tenant_id uuid not null references public\.tenants/i],
   ["actor references use composite tenant/profile integrity", /foreign key \(tenant_id, created_by\)[\s\S]*references public\.profiles \(tenant_id, id\)[\s\S]*foreign key \(tenant_id, actor_user_id\)[\s\S]*references public\.profiles \(tenant_id, id\)/i],
   ["resolve RPC revokes all API roles before exact grant", /revoke execute on function public\.resolve_ticket_access\(text\) from public, anon, authenticated, service_role;\s*revoke[\s\S]*grant execute on function public\.resolve_ticket_access\(text\) to anon, authenticated, service_role;/i],

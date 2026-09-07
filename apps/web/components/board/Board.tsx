@@ -30,6 +30,56 @@ import { Column } from "./Column";
 import { CreateCardDialog } from "./CreateCardDialog";
 import { TaskDetailDialog } from "./TaskDetailDialog";
 
+export function BoardCreateTaskButton({
+  projectId,
+  columns,
+  members,
+  readOnly,
+  onCreated,
+}: {
+  projectId: string;
+  columns: BoardColumn[];
+  members: ProjectMemberOption[];
+  readOnly: boolean;
+  onCreated?: (task: BoardTask) => void;
+}) {
+  const router = useRouter();
+  const [createColumnId, setCreateColumnId] = useState<string | null>(null);
+  const defaultColumn = useMemo(
+    () => [...columns].sort((left, right) => left.position - right.position)[0],
+    [columns],
+  );
+  const createColumn = columns.find((column) => column.id === createColumnId);
+
+  if (readOnly) return null;
+
+  return (
+    <>
+      <button
+        type="button"
+        className="primary-button"
+        disabled={!defaultColumn}
+        onClick={() => setCreateColumnId(defaultColumn.id)}
+      >
+        Agregar tarea
+      </button>
+      {createColumn ? (
+        <CreateCardDialog
+          projectId={projectId}
+          columnId={createColumn.id}
+          columnName={createColumn.name}
+          members={members}
+          onCreated={(task) => {
+            onCreated?.(task);
+            router.refresh();
+          }}
+          onClose={() => setCreateColumnId(null)}
+        />
+      ) : null}
+    </>
+  );
+}
+
 export function Board({
   projectId,
   initialColumns,
@@ -287,7 +337,9 @@ export function Board({
           columnId={createColumn.id}
           columnName={createColumn.name}
           members={members}
-          onCreated={(task) => setTasks((current) => [...current, task])}
+          onCreated={(task) => {
+            if (task.is_current_sprint) setTasks((current) => [...current, task]);
+          }}
           onClose={() => setCreateColumnId(null)}
         />
       ) : null}

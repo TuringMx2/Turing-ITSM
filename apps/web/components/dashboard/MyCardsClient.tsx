@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { listMyCards, type MyCardRow } from "@/app/actions/tasks";
+import { formatTaskEstimate } from "@/lib/task-estimate";
 
 const priorityLabel: Record<string, string> = {
   low: "Baja",
@@ -10,12 +11,6 @@ const priorityLabel: Record<string, string> = {
   high: "Alta",
   urgent: "Urgente",
 };
-const dueDateFormatter = new Intl.DateTimeFormat("es", { dateStyle: "medium", timeZone: "UTC" });
-
-function formatDueDate(value: string): string {
-  return dueDateFormatter.format(new Date(`${value}T00:00:00Z`));
-}
-
 export function MyCardsClient() {
   const [rows, setRows] = useState<MyCardRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +77,7 @@ export function MyCardsClient() {
               </div>
               {t.description ? <p className="muted small-text task-card-description">{t.description.slice(0, 120)}</p> : null}
               <div className="task-card-footer">
-                <span className="muted small-text task-card-meta">{t.column_name} · Vence {formatDueDate(t.due_date)}</span>
+                <span className="muted small-text task-card-meta">{t.column_name} · {formatTaskEstimate(t.estimate_quantity, t.estimate_unit)}</span>
                 <Link className="task-card-link" href={`/projects/${t.project_id}/board`}>Abrir tablero →</Link>
               </div>
             </li>

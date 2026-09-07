@@ -258,15 +258,30 @@ export const listDailyCheckinsSchema = z.object({
 export const createBoardTaskSchema = z.object({
   projectId: organizationIdSchema,
   columnId: organizationIdSchema,
+  isCurrentSprint: z.boolean(),
   title: z.string().trim().min(1).max(200),
   description: z.string().trim().min(1).max(8000),
-  dueDate: z.string().date(),
+  estimateQuantity: z
+    .string()
+    .trim()
+    .regex(/^(?:0|[1-9]\d{0,7})(?:\.\d{1,2})?$/)
+    .transform(Number)
+    .pipe(z.number().positive().max(99_999_999.99)),
+  estimateUnit: z.enum(["hours", "days"]),
   priority: taskPrioritySchema.default("medium"),
   assigneeIds: z.array(organizationIdSchema).max(100).default([]),
 });
 
-export const updateBoardTaskSchema = createBoardTaskSchema.omit({ projectId: true }).extend({
+export const updateBoardTaskSchema = createBoardTaskSchema.omit({
+  projectId: true,
+  isCurrentSprint: true,
+}).extend({
   taskId: organizationIdSchema,
+});
+
+export const setTaskCurrentSprintSchema = z.object({
+  taskId: organizationIdSchema,
+  isCurrentSprint: z.boolean(),
 });
 
 export const moveTaskSchema = z.object({

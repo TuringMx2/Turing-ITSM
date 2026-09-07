@@ -2,12 +2,12 @@ import { isAdmin, type InternalRole } from "@/lib/rbac";
 import { getDailyAdminWorkspace, getDailyMemberWorkspace } from "@/app/actions/daily-runs";
 import { DailyExperience } from "./daily-experience";
 
-export async function DailyWorkspace({ role, teamId }: { role: InternalRole; teamId?: string }) {
-  return isAdmin(role) ? <DailyAdminWorkspace role={role} teamId={teamId} /> : <DailyMemberWorkspace teamId={teamId} />;
+export async function DailyWorkspace({ role }: { role: InternalRole }) {
+  return isAdmin(role) ? <DailyAdminWorkspace role={role} /> : <DailyMemberWorkspace />;
 }
 
-async function DailyAdminWorkspace({ role, teamId }: { role: InternalRole; teamId?: string }) {
-  const result = await getDailyAdminWorkspace(teamId);
+async function DailyAdminWorkspace({ role }: { role: InternalRole }) {
+  const result = await getDailyAdminWorkspace();
   if (!result.data) {
     return (
       <section className="card access-denied-card">
@@ -18,11 +18,11 @@ async function DailyAdminWorkspace({ role, teamId }: { role: InternalRole; teamI
     );
   }
 
-  return <DailyExperience data={result.data} key={result.data.taskWorkspace.localDate ?? "daily"} role={role} />;
+  return <DailyExperience data={result.data} role={role} />;
 }
 
-async function DailyMemberWorkspace({ teamId }: { teamId?: string }) {
-  const result = await getDailyMemberWorkspace(teamId);
+async function DailyMemberWorkspace() {
+  const result = await getDailyMemberWorkspace();
   if (!result.data) {
     return (
       <section className="card access-denied-card">
@@ -33,5 +33,5 @@ async function DailyMemberWorkspace({ teamId }: { teamId?: string }) {
     );
   }
 
-  return <DailyExperience data={result.data} key={result.data.taskWorkspace.localDate ?? "daily"} role="support_agent" />;
+  return <DailyExperience data={result.data} role="support_agent" />;
 }
