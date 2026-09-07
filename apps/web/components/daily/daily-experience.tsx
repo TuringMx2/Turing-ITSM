@@ -9,7 +9,7 @@ import type {
   DailyTeamRow,
 } from "@/app/actions/daily-runs";
 import { Dialog, useDialogClose } from "@/components/admin/dialog";
-import { DailyResponseForm } from "./daily-forms";
+import { DailyCompletionSection, DailyResponseForm } from "./daily-forms";
 import { DailyResponsesByQuestion } from "./daily-responses-by-question";
 import { DailyConfigPanel } from "./daily-config-panel";
 import { DailyContentCard } from "./daily-content-card";
@@ -92,7 +92,6 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
   const [teamFilter, setTeamFilter] = useState<string>("all");
   const [showingConfig, setShowingConfig] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState<"respond" | "readonly">("respond");
   const [respondNonce, setRespondNonce] = useState(0);
 
   const [referenceTimezone, setReferenceTimezone] = useState<string>("UTC");
@@ -210,7 +209,6 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
 
   function openModal() {
     if (!canRespond && !hasResponded) return;
-    setModalMode(canRespond ? "respond" : "readonly");
     setSelectedResponseTeamId(responseTeams.length === 1 ? responseTeams[0].id : undefined);
     setRespondNonce((value) => value + 1);
     setModalOpen(true);
@@ -228,14 +226,15 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
   const ctaLabel = canRespond ? "Responder Daily" : "Ver mis respuestas";
   const ctaDisabled = !hasResponded && !canRespond;
   const responseHint = "No hay una ejecución pendiente para este día.";
+  const isReadonlyModal = hasResponded && !canRespond;
 
   const emptyState = submissionsForDate.length === 0;
 
-  const modalTitle = modalMode === "respond" ? "Responder Daily" : "Tus respuestas del Daily";
+  const modalTitle = isReadonlyModal ? "Tus respuestas del Daily" : "Responder Daily";
   const modalDescription =
-    modalMode === "respond"
-      ? `Respondé las preguntas de la ejecución del ${longDateLabel}.`
-      : `Estas son las respuestas que enviaste para el ${longDateLabel}.`;
+    isReadonlyModal
+      ? `Estas son las respuestas que enviaste para el ${longDateLabel}.`
+      : `Respondé las preguntas de la ejecución del ${longDateLabel}.`;
 
   const readonlyAnswers = mySubmissionForDate
     ? submissionAnswers.filter((answer) => answer.submission_id === mySubmissionForDate.id)
@@ -370,6 +369,8 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
             )}
           </section>
 
+          <DailyCompletionSection teams={data.completionTeams} />
+
           <section className="daily-responses" aria-labelledby="daily-responses-heading">
             <header className="daily-responses-heading">
               <div>
@@ -410,8 +411,15 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
         <DailyConfigPanel data={adminData as DailyAdminData} />
       )}
 
-      <Dialog className="daily-response-dialog" description={modalDescription} onOpenChange={handleModalOpenChange} open={modalOpen} title={modalTitle}>
-        {modalMode === "respond" ? (
+      <Dialog
+        className="daily-response-dialog"
+        description={modalDescription}
+        onOpenChange={handleModalOpenChange}
+        open={modalOpen}
+        protectDirtyChanges={!isReadonlyModal}
+        title={modalTitle}
+      >
+        {!isReadonlyModal ? (
           responseTeams.length > 1 && !responseTeamId ? (
             <div className="daily-response-team-picker">
               <p>Seleccioná el equipo para responder su Daily.</p>
