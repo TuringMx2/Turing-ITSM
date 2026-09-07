@@ -59,7 +59,9 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
 						</div>
 					</header>
 					<div className="dashboard-workspace-grid">
-						<DashboardDailyCard result={dashboardData?.[0] ?? { error: "No se pudo cargar Daily." }} />
+						<DashboardDailyCard
+							result={dashboardData?.[0] ?? { error: "No se pudo cargar Daily." }}
+						/>
 						<MyCardsWidget result={dashboardData?.[1]} />
 					</div>
 				</section>

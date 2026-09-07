@@ -8,13 +8,10 @@ import type {
   DailySubmissionAnswerRow,
   DailyTeamRow,
 } from "@/app/actions/daily-runs";
-import { DailyCompletionChecklist } from "./daily-completion-checklist";
-import { DailyPlanTaskEntry } from "./daily-plan-task-entry";
 import { Dialog, useDialogClose } from "@/components/admin/dialog";
 import { DailyResponseForm } from "./daily-forms";
 import { DailyResponsesByQuestion } from "./daily-responses-by-question";
 import { DailyConfigPanel } from "./daily-config-panel";
-import { DailyPhaseRefresh } from "./daily-phase-refresh";
 import { DailyContentCard } from "./daily-content-card";
 
 const dayLabelFmt = new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "short", timeZone: "UTC" });
@@ -91,7 +88,6 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
   const currentUserId = data.currentUserId;
   const pendingRuns = data.pendingRuns;
   const runQuestions = data.runQuestions;
-  const taskWorkspace = "taskWorkspace" in data ? data.taskWorkspace : undefined;
 
   const [teamFilter, setTeamFilter] = useState<string>("all");
   const [showingConfig, setShowingConfig] = useState(false);
@@ -245,11 +241,8 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
     ? submissionAnswers.filter((answer) => answer.submission_id === mySubmissionForDate.id)
     : [];
 
-  const taskForSelectedDate = taskWorkspace?.localDate === selectedDate;
-
   return (
     <section className="module-page daily-page daily-experience">
-      <DailyPhaseRefresh timezoneName={taskWorkspace?.timezoneName} />
       <header className="daily-hero">
         <div className="daily-hero-intro">
           <p className="eyebrow">Daily</p>
@@ -325,40 +318,6 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
               <span aria-hidden="true">›</span>
             </button>
           </nav>
-
-          {taskWorkspace?.status === "unavailable" ? (
-            <section className="card daily-team-context-card">
-              <p className="eyebrow">Daily</p>
-              <h2>El plan no está disponible</h2>
-              <p className="muted">{taskWorkspace.message}</p>
-            </section>
-          ) : taskWorkspace?.status === "ready" && taskForSelectedDate ? (
-            <section className="card daily-task-workspace">
-              <header className="daily-task-workspace-header">
-                <div>
-                  <p className="eyebrow">{taskWorkspace.teamName}</p>
-                  <h2>Trabajo de hoy</h2>
-                </div>
-              </header>
-              {taskWorkspace.phase === "planning" ? (
-                <DailyPlanTaskEntry teamId={taskWorkspace.teamId!} tasks={taskWorkspace.tasks} />
-              ) : taskWorkspace.completionSubmitted ? (
-                <p className="action-message success" role="status">Ya registraste el cierre Daily de hoy.</p>
-              ) : taskWorkspace.tasks.length > 0 ? (
-                <DailyCompletionChecklist logicalDate={taskWorkspace.localDate!} tasks={taskWorkspace.tasks} teamId={taskWorkspace.teamId!} />
-              ) : (
-                <p className="empty-state">No hay tareas planificadas para cerrar hoy.</p>
-              )}
-              {taskWorkspace.yesterdayCompletedTasks.length > 0 ? (
-                <div className="daily-yesterday-evidence">
-                  <p className="eyebrow">Ayer · evidencia de trabajo terminado</p>
-                  <ul className="daily-task-list">
-                    {taskWorkspace.yesterdayCompletedTasks.map((task) => <li key={task.id}>{task.title}</li>)}
-                  </ul>
-                </div>
-              ) : null}
-            </section>
-          ) : null}
 
           {reportTeams.length > 1 ? (
             <div className="daily-filter-bar daily-team-filter">
