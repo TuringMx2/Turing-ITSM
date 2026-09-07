@@ -12,12 +12,21 @@ type DialogProps = {
   className?: string;
   children: ReactNode;
   description: string;
+  protectDirtyChanges?: boolean;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   title: string;
 };
 
-export function Dialog({ children, className, description, onOpenChange, open, title }: DialogProps) {
+export function Dialog({
+  children,
+  className,
+  description,
+  protectDirtyChanges = true,
+  onOpenChange,
+  open,
+  title,
+}: DialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const descriptionId = useId();
@@ -47,7 +56,7 @@ export function Dialog({ children, className, description, onOpenChange, open, t
   }, [open]);
 
   function requestClose() {
-    if (isDirty) {
+    if (protectDirtyChanges && isDirty) {
       setDismissMessage("Tenés cambios sin guardar. Guardalos o descartalos antes de cerrar.");
       return;
     }
@@ -59,6 +68,8 @@ export function Dialog({ children, className, description, onOpenChange, open, t
     setDismissMessage("");
     onOpenChange(false);
   }
+
+  const visibleDismissMessage = protectDirtyChanges ? dismissMessage : "";
 
   return (
     <dialog
@@ -78,7 +89,10 @@ export function Dialog({ children, className, description, onOpenChange, open, t
       }}
       ref={dialogRef}
     >
-      <div className={`admin-dialog-shell${dismissMessage ? " has-dismiss-message" : ""}`} onChangeCapture={() => setIsDirty(true)}>
+      <div
+        className={`admin-dialog-shell${visibleDismissMessage ? " has-dismiss-message" : ""}`}
+        onChangeCapture={protectDirtyChanges ? () => setIsDirty(true) : undefined}
+      >
         <header className="admin-dialog-header">
           <div>
             <h2 id={titleId}>{title}</h2>
@@ -88,9 +102,9 @@ export function Dialog({ children, className, description, onOpenChange, open, t
             <span aria-hidden="true">×</span>
           </button>
         </header>
-        {dismissMessage ? (
+        {visibleDismissMessage ? (
           <div className="dialog-dismiss-message" role="alert">
-            <span>{dismissMessage}</span>
+            <span>{visibleDismissMessage}</span>
             <button onClick={discardAndClose} type="button">Descartar cambios</button>
           </div>
         ) : null}
