@@ -732,9 +732,8 @@ export async function getDailyMemberWorkspace(requestedTeamId?: string): Promise
 
   const taskWorkspaceResult = await taskWorkspacePromise;
   const taskWorkspace = taskWorkspaceResult.data;
-  const selectedTeamId = taskWorkspace?.status === "ready" ? taskWorkspace.teamId : undefined;
   const submittedRunIds = new Set((submissionLinksResult.data ?? []).map((row) => String(row.run_id)));
-  const allRuns = ((runsResult.data ?? []) as DailyRunRow[]).filter((run) => selectedTeamId ? run.team_id === selectedTeamId : false);
+  const allRuns = (runsResult.data ?? []) as DailyRunRow[];
   const localDateByRunId = new Map(allRuns.map((run) => [run.id, run.local_date]));
   const pendingRuns = allRuns.filter((run) => !submittedRunIds.has(run.id));
   const pendingRunIds = pendingRuns.map((run) => run.id);

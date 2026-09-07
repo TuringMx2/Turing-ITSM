@@ -32,11 +32,11 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
 	const isRolesPermissions = module === "roles-permisos" && isAdmin(user.role);
 	const isDaily = module === "daily";
 	const isDashboard = module === "dashboard";
-	const search = await searchParams;
-	const requestedDailyTeam = typeof search?.dailyTeam === "string" ? search.dailyTeam : undefined;
+	const search = isDashboard ? await searchParams : undefined;
+	const requestedDashboardDailyTeam = typeof search?.dailyTeam === "string" ? search.dailyTeam : undefined;
 	const dashboardData = isDashboard
 		? await Promise.all([
-				getDailyMemberWorkspace(requestedDailyTeam),
+				getDailyMemberWorkspace(requestedDashboardDailyTeam),
 				listMyCards({ page: 1, pageSize: 10 }),
 			])
 		: null;
@@ -46,7 +46,7 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
 			{isRolesPermissions ? (
 				<RolesPermissionsAdmin />
 			) : isDaily ? (
-				<DailyWorkspace role={user.role} teamId={requestedDailyTeam} />
+				<DailyWorkspace role={user.role} />
 			) : isDashboard ? (
 				<section className="module-page page-stack dashboard-page">
 					<header className="page-header dashboard-page-header">

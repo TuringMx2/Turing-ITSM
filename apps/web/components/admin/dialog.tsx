@@ -9,6 +9,7 @@ export function useDialogClose() {
 }
 
 type DialogProps = {
+  className?: string;
   children: ReactNode;
   description: string;
   onOpenChange: (open: boolean) => void;
@@ -16,7 +17,7 @@ type DialogProps = {
   title: string;
 };
 
-export function Dialog({ children, description, onOpenChange, open, title }: DialogProps) {
+export function Dialog({ children, className, description, onOpenChange, open, title }: DialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const descriptionId = useId();
@@ -64,7 +65,7 @@ export function Dialog({ children, description, onOpenChange, open, title }: Dia
       aria-describedby={descriptionId}
       aria-labelledby={titleId}
       aria-modal="true"
-      className="admin-dialog"
+      className={className ? `admin-dialog ${className}` : "admin-dialog"}
       onCancel={(event) => {
         event.preventDefault();
         requestClose();

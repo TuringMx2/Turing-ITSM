@@ -182,10 +182,12 @@ export const roleModules: Record<InternalRole, AppModule[]> = {
 	support_agent: [
 		dashboardModule,
 		dailyModule,
+		projectsModule,
 	],
 	admin: [
 		dashboardModule,
 		dailyModule,
+		projectsModule,
 		rolesPermissionsModule,
 	],
 	superadmin: [
