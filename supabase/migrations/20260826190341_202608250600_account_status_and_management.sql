@@ -323,4 +323,4 @@ create trigger prevent_last_active_admin_change
 before update of role, status or delete on public.profiles
 for each row execute function private.prevent_last_active_admin_change();
 
-grant select, insert, update on public.profiles to authenticated;
+grant select, insert, update on public.profiles to authenticated;;

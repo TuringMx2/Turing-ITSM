@@ -168,6 +168,12 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
     () => runQuestions.filter((question) => responseRunIds.has(question.run_id)),
     [responseRunIds, runQuestions],
   );
+  const responsePrefill = useMemo(
+    () => responseTeamId
+      ? data.responsePrefills.find((prefill) => prefill.teamId === responseTeamId && prefill.localDate === selectedDate)
+      : undefined,
+    [data.responsePrefills, responseTeamId, selectedDate],
+  );
   const hasResponded = Boolean(mySubmissionForDate);
   const canRespond = pendingResponseRunsForDate.length > 0;
 
@@ -438,10 +444,11 @@ export function DailyExperience({ role, data }: DailyExperienceProps) {
           ) : responsePendingRuns.length > 0 ? (
             <>
               <DailyResponseForm
-                key={`respond-${respondNonce}-${selectedDate}`}
+                key={`respond-${respondNonce}-${selectedDate}-${responseTeamId}`}
                 localDate={selectedDate}
                 onSuccess={handleRespondSuccess}
                 pendingRuns={responsePendingRuns}
+                prefill={responsePrefill}
                 runQuestions={responseRunQuestions}
                 className="daily-response-form"
                 footer={<DialogCloseButton label="Cancelar" />}

@@ -1,7 +1,6 @@
 -- Configurable project workflows, collaborative tasks, and append-only activity.
 
 create type public.task_priority as enum ('low', 'medium', 'high', 'urgent');
-
 create table public.project_workflow_columns (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null,
@@ -27,7 +26,6 @@ create table public.project_workflow_columns (
   unique (project_id, position),
   unique (tenant_id, project_id, id)
 );
-
 create table public.tasks (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null,
@@ -60,7 +58,6 @@ create table public.tasks (
   constraint tasks_position_check check (position >= 0),
   unique (tenant_id, project_id, id)
 );
-
 create table public.task_assignees (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null,
@@ -83,7 +80,6 @@ create table public.task_assignees (
     on delete restrict,
   unique (task_id, user_id)
 );
-
 create table public.task_comments (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null,
@@ -104,7 +100,6 @@ create table public.task_comments (
     char_length(btrim(body)) between 1 and 8000
   )
 );
-
 create table public.task_attachments (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null,
@@ -133,7 +128,6 @@ create table public.task_attachments (
     size_bytes between 0 and 10485760
   )
 );
-
 create table public.task_activity (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null,
@@ -156,7 +150,6 @@ create table public.task_activity (
     references public.profiles (tenant_id, id)
     on delete restrict
 );
-
 create function private.assert_task_scope_immutable()
 returns trigger
 language plpgsql
@@ -171,7 +164,6 @@ begin
   return new;
 end;
 $$;
-
 create function private.assert_workflow_column_scope_immutable()
 returns trigger
 language plpgsql
@@ -186,7 +178,6 @@ begin
   return new;
 end;
 $$;
-
 create function private.prevent_nonempty_workflow_column_delete()
 returns trigger
 language plpgsql
@@ -199,7 +190,6 @@ begin
   return old;
 end;
 $$;
-
 create function private.seed_default_project_workflow()
 returns trigger
 language plpgsql
@@ -217,7 +207,6 @@ begin
   return new;
 end;
 $$;
-
 create function private.record_task_activity()
 returns trigger
 language plpgsql
@@ -280,7 +269,6 @@ begin
   return new;
 end;
 $$;
-
 create function private.prevent_task_activity_change()
 returns trigger
 language plpgsql
@@ -290,65 +278,50 @@ begin
   raise exception 'Task activity is append-only';
 end;
 $$;
-
 alter function private.seed_default_project_workflow() owner to postgres;
 alter function private.record_task_activity() owner to postgres;
-
 create trigger seed_project_workflow_after_insert
 after insert on public.projects
 for each row execute function private.seed_default_project_workflow();
-
 create trigger set_project_workflow_columns_updated_at
 before update on public.project_workflow_columns
 for each row execute function private.set_updated_at();
-
 create trigger assert_workflow_column_scope_immutable
 before update on public.project_workflow_columns
 for each row execute function private.assert_workflow_column_scope_immutable();
-
 create trigger prevent_nonempty_workflow_column_delete
 before delete on public.project_workflow_columns
 for each row execute function private.prevent_nonempty_workflow_column_delete();
-
 create trigger set_tasks_updated_at
 before update on public.tasks
 for each row execute function private.set_updated_at();
-
 create trigger assert_task_scope_immutable
 before update on public.tasks
 for each row execute function private.assert_task_scope_immutable();
-
 create trigger record_workflow_column_activity
 after insert or update or delete on public.project_workflow_columns
 for each row execute function private.record_task_activity();
-
 create trigger record_task_activity
 after insert or update or delete on public.tasks
 for each row execute function private.record_task_activity();
-
 create trigger record_task_assignee_activity
 after insert or delete on public.task_assignees
 for each row execute function private.record_task_activity();
-
 create trigger record_task_comment_activity
 after insert on public.task_comments
 for each row execute function private.record_task_activity();
-
 create trigger record_task_attachment_activity
 after insert or delete on public.task_attachments
 for each row execute function private.record_task_activity();
-
 create trigger prevent_task_activity_update_delete
 before update or delete on public.task_activity
 for each row execute function private.prevent_task_activity_change();
-
 revoke execute on function private.assert_task_scope_immutable() from public;
 revoke execute on function private.assert_workflow_column_scope_immutable() from public;
 revoke execute on function private.prevent_nonempty_workflow_column_delete() from public;
 revoke execute on function private.seed_default_project_workflow() from public;
 revoke execute on function private.record_task_activity() from public;
 revoke execute on function private.prevent_task_activity_change() from public;
-
 insert into public.project_workflow_columns (
   tenant_id, project_id, name, position, created_by
 )
@@ -363,7 +336,6 @@ cross join (values
 where not exists (
   select 1 from public.project_workflow_columns c where c.project_id = p.id
 );
-
 create index project_workflow_columns_project_position_idx
   on public.project_workflow_columns (project_id, position);
 create index tasks_project_column_position_idx
@@ -375,84 +347,68 @@ create index task_comments_task_created_idx on public.task_comments (task_id, cr
 create index task_attachments_task_created_idx on public.task_attachments (task_id, created_at);
 create index task_activity_task_occurred_idx on public.task_activity (task_id, occurred_at);
 create index task_activity_project_occurred_idx on public.task_activity (project_id, occurred_at);
-
 alter table public.project_workflow_columns enable row level security;
 alter table public.tasks enable row level security;
 alter table public.task_assignees enable row level security;
 alter table public.task_comments enable row level security;
 alter table public.task_attachments enable row level security;
 alter table public.task_activity enable row level security;
-
 create policy project_workflow_columns_read_scope on public.project_workflow_columns
 for select to authenticated
 using (private.can_manage_project(tenant_id, project_id));
-
 create policy project_workflow_columns_insert_scope on public.project_workflow_columns
 for insert to authenticated
 with check (
   private.can_manage_project(tenant_id, project_id)
   and created_by = (select auth.uid())
 );
-
 create policy project_workflow_columns_update_scope on public.project_workflow_columns
 for update to authenticated
 using (private.can_manage_project(tenant_id, project_id))
 with check (private.can_manage_project(tenant_id, project_id));
-
 create policy project_workflow_columns_delete_scope on public.project_workflow_columns
 for delete to authenticated
 using (private.can_manage_project(tenant_id, project_id));
-
 create policy tasks_read_scope on public.tasks
 for select to authenticated
 using (private.can_manage_project(tenant_id, project_id));
-
 create policy tasks_insert_scope on public.tasks
 for insert to authenticated
 with check (
   private.can_manage_project(tenant_id, project_id)
   and created_by = (select auth.uid())
 );
-
 create policy tasks_update_scope on public.tasks
 for update to authenticated
 using (private.can_manage_project(tenant_id, project_id))
 with check (private.can_manage_project(tenant_id, project_id));
-
 create policy tasks_delete_scope on public.tasks
 for delete to authenticated
 using (private.can_manage_project(tenant_id, project_id));
-
 create policy task_assignees_read_scope on public.task_assignees
 for select to authenticated
 using (private.can_manage_project(tenant_id, project_id));
-
 create policy task_assignees_insert_scope on public.task_assignees
 for insert to authenticated
 with check (
   private.can_manage_project(tenant_id, project_id)
   and assigned_by = (select auth.uid())
 );
-
 create policy task_assignees_delete_scope on public.task_assignees
 for delete to authenticated
 using (private.can_manage_project(tenant_id, project_id));
-
 create policy task_comments_read_scope on public.task_comments
 for select to authenticated
 using (private.can_manage_project(tenant_id, project_id));
-
 create policy task_comments_insert_scope on public.task_comments
 for insert to authenticated
 with check (
   private.can_manage_project(tenant_id, project_id)
   and author_user_id = (select auth.uid())
 );
-
 create policy task_attachments_read_scope on public.task_attachments
 for select to authenticated
 using (private.can_manage_project(tenant_id, project_id));
-
 create policy task_attachments_insert_scope on public.task_attachments
 for insert to authenticated
 with check (
@@ -460,28 +416,23 @@ with check (
   and uploaded_by = (select auth.uid())
   and bucket = 'task-attachments'
 );
-
 create policy task_attachments_delete_scope on public.task_attachments
 for delete to authenticated
 using (private.can_manage_project(tenant_id, project_id));
-
 create policy task_activity_read_scope on public.task_activity
 for select to authenticated
 using (private.can_manage_project(tenant_id, project_id));
-
 grant select, insert, update, delete on public.project_workflow_columns to authenticated;
 grant select, insert, update, delete on public.tasks to authenticated;
 grant select, insert, delete on public.task_assignees to authenticated;
 grant select, insert on public.task_comments to authenticated;
 grant select, insert, delete on public.task_attachments to authenticated;
 grant select on public.task_activity to authenticated;
-
 insert into storage.buckets (id, name, public, file_size_limit)
 values ('task-attachments', 'task-attachments', false, 10485760)
 on conflict (id) do update set
   public = excluded.public,
   file_size_limit = excluded.file_size_limit;
-
 create policy task_attachment_objects_read on storage.objects
 for select to authenticated
 using (
@@ -492,7 +443,6 @@ using (
       and private.can_manage_project(a.tenant_id, a.project_id)
   )
 );
-
 create policy task_attachment_objects_insert on storage.objects
 for insert to authenticated
 with check (
@@ -504,7 +454,6 @@ with check (
       and private.can_manage_project(a.tenant_id, a.project_id)
   )
 );
-
 create policy task_attachment_objects_delete on storage.objects
 for delete to authenticated
 using (

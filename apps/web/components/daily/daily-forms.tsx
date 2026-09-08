@@ -21,6 +21,7 @@ import {
   type DailyCompletionTeam,
   type DailyActionState,
   type DailyQuestionRow,
+  type DailyResponsePrefill,
   type DailyRunQuestionRow,
   type DailyRunRow,
   type DailyScheduleRow,
@@ -30,7 +31,7 @@ import {
   submitDailyTaskCompletion,
   type DailyTaskActionState,
 } from "@/app/actions/daily-tasks";
-import { isDailyPlannedWorkQuestion } from "@/lib/daily";
+import { isDailyCompletedWorkQuestion, isDailyPlannedWorkQuestion } from "@/lib/daily";
 
 const initialState: DailyActionState = { status: "idle", message: "" };
 const initialTaskCompletionState: DailyTaskActionState = { status: "idle", message: "" };
@@ -324,6 +325,7 @@ export function DailyResponseForm({
   localDate,
   pendingRuns,
   runQuestions,
+  prefill,
   onSuccess,
   className = "card daily-response-form",
   footer,
@@ -331,11 +333,12 @@ export function DailyResponseForm({
   localDate: string;
   pendingRuns: DailyRunRow[];
   runQuestions: DailyRunQuestionRow[];
+  prefill?: DailyResponsePrefill;
   onSuccess?: () => void;
   className?: string;
   footer?: ReactNode;
 }) {
-  type PlannedTask = { id: string; value: string };
+  type PlannedTask = { id: string; value: string; carriedTaskId?: string };
 
   const pendingRunIds = new Set(pendingRuns.map((run) => run.id));
   const runQuestionsForPendingRuns = runQuestions.filter((question) => pendingRunIds.has(question.run_id));
@@ -349,12 +352,21 @@ export function DailyResponseForm({
       }, new Map<string, DailyRunQuestionRow>())
       .values(),
   );
-  const plannedWorkQuestion = questions.find((question) => isDailyPlannedWorkQuestion(question.semantic_key, question.question_text));
+  const plannedWorkQuestion = questions.find((question) => isDailyPlannedWorkQuestion(question.semantic_key));
   const taskIdPrefix = useId();
   const taskErrorId = `${taskIdPrefix}-error`;
   const nextTaskIndex = useRef(2);
   const nextTaskInputId = useRef<string | null>(null);
-  const [plannedTasks, setPlannedTasks] = useState<PlannedTask[]>(() => [{ id: `${taskIdPrefix}-task-1`, value: "" }]);
+  const [plannedTasks, setPlannedTasks] = useState<PlannedTask[]>(() => {
+    const carriedTasks = prefill?.carriedTasks ?? [];
+    return carriedTasks.length > 0
+      ? carriedTasks.map((task, index) => ({
+          id: `${taskIdPrefix}-carried-${index + 1}`,
+          value: task.title,
+          carriedTaskId: task.id,
+        }))
+      : [{ id: `${taskIdPrefix}-task-1`, value: "" }];
+  });
   const [plannedWorkError, setPlannedWorkError] = useState("");
   const plannedTaskCount = plannedTasks.filter((task) => task.value.trim()).length;
   const plannedWorkAnswer = plannedTasks
@@ -402,6 +414,11 @@ export function DailyResponseForm({
       setPlannedWorkError("Agregá al menos una tarea para tu plan de hoy.");
       return;
     }
+    if (plannedTasks.some((task) => task.carriedTaskId && !task.value.trim())) {
+      event.preventDefault();
+      setPlannedWorkError("Las actividades trasladadas deben conservar un texto antes de enviar.");
+      return;
+    }
     if (plannedWorkAnswer.length > 4000) {
       event.preventDefault();
       setPlannedWorkError("El plan de hoy no puede superar los 4000 caracteres.");
@@ -433,16 +450,18 @@ export function DailyResponseForm({
           <p className="muted">Las preguntas compartidas se responden una sola vez y se aplican a las {pendingRuns.length} ejecuciones visibles.</p>
         </div>
         {questions.map((question, index) => {
-          const isPlannedWork = isDailyPlannedWorkQuestion(question.semantic_key, question.question_text);
+          const isPlannedWork = isDailyPlannedWorkQuestion(question.semantic_key);
+          const isCompletedWork = isDailyCompletedWorkQuestion(question.semantic_key);
           const questionLabel = `${index + 1}. ${question.question_text}`;
 
           return isPlannedWork ? (
             <div className="daily-answer-field daily-planned-work-field" key={question.question_id}>
-              <span>{questionLabel}</span>
-              <input name={`answer:${question.question_id}`} type="hidden" value={plannedWorkAnswer} />
+                <span>{questionLabel}</span>
+                <input name={`answer:${question.question_id}`} type="hidden" value={plannedWorkAnswer} />
               <div aria-describedby={plannedWorkError ? taskErrorId : undefined} aria-label="Tareas planificadas" className="daily-planned-work-list" role="group">
                 {plannedTasks.map((task, taskIndex) => (
                   <div className="daily-planned-work-row" key={task.id}>
+                    {task.carriedTaskId ? <input name="carriedTaskId" type="hidden" value={task.carriedTaskId} /> : null}
                     <input
                       aria-describedby={plannedWorkError ? taskErrorId : undefined}
                       aria-label={`Tarea ${taskIndex + 1}`}
@@ -461,7 +480,7 @@ export function DailyResponseForm({
                       type="text"
                       value={task.value}
                     />
-                    {taskIndex > 0 ? (
+                    {taskIndex > 0 && !task.carriedTaskId ? (
                       <button
                         aria-label={`Eliminar tarea ${taskIndex + 1}`}
                         className="daily-planned-work-remove"
@@ -490,6 +509,7 @@ export function DailyResponseForm({
               <span>{questionLabel}</span>
               <textarea
                 autoComplete="off"
+                defaultValue={isCompletedWork ? prefill?.completedWork : undefined}
                 maxLength={4000}
                 minLength={1}
                 name={`answer:${question.question_id}`}
@@ -579,8 +599,8 @@ function DailyTaskCompletionForm({ team }: { team: DailyCompletionTeam }) {
             <button className="secondary-button danger-button" disabled={pending} name="resolution" type="submit" value="delete">
               Eliminar las restantes
             </button>
-            <button className="primary-button" disabled={pending} name="resolution" type="submit" value="carry">
-              Pasarlas a mañana
+              <button className="primary-button" disabled={pending} name="resolution" type="submit" value="carry">
+                Pasarlas al próximo Daily
             </button>
           </div>
         </div>
@@ -608,7 +628,7 @@ export function DailyCompletionSection({ teams }: { teams: DailyCompletionTeam[]
         <div>
           <p className="eyebrow">Cierre de hoy</p>
           <h2 id="daily-completion-heading">¿Qué actividades lograste acabar hoy?</h2>
-          <p className="muted small-text">Marcá las tareas terminadas. Las restantes se eliminan o pasan a mañana según tu elección.</p>
+          <p className="muted small-text">Marcá las actividades terminadas. Las restantes se eliminan o pasan al próximo Daily según tu elección.</p>
         </div>
         <span className="daily-state warning">Después de las 16:00</span>
       </header>

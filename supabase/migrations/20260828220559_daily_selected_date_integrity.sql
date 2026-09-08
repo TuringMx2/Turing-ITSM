@@ -185,4 +185,4 @@ $$;
 
 alter function public.submit_daily_response(uuid[], jsonb, date) owner to postgres;
 revoke execute on function public.submit_daily_response(uuid[], jsonb, date) from public, anon, authenticated, service_role;
-grant execute on function public.submit_daily_response(uuid[], jsonb, date) to authenticated;
+grant execute on function public.submit_daily_response(uuid[], jsonb, date) to authenticated;;

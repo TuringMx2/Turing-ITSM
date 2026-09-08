@@ -90,6 +90,10 @@ export const generateDailyRunSchema = z.object({
 export const submitDailyResponseSchema = z.object({
   runIds: z.array(dailyEntityIdSchema).min(1).max(100).refine((values) => new Set(values).size === values.length),
   localDate: z.string().date(),
+  carriedTaskIds: z
+    .array(dailyEntityIdSchema)
+    .max(100)
+    .refine((values) => new Set(values).size === values.length),
   answers: z
     .array(
       z.object({
@@ -100,11 +104,6 @@ export const submitDailyResponseSchema = z.object({
     .min(1)
     .max(300)
     .refine((values) => new Set(values.map((value) => value.questionId)).size === values.length),
-});
-
-export const dailyTaskTitlesSchema = z.object({
-  teamId: dailyEntityIdSchema,
-  titles: z.array(z.string().trim().min(1).max(400)).min(1).max(100),
 });
 
 export const dailyTaskCompletionSchema = z.object({
@@ -348,7 +347,6 @@ export type TeamDailyScheduleInput = z.infer<typeof teamDailyScheduleSchema>;
 export type TeamDailyQuestionsInput = z.infer<typeof teamDailyQuestionsSchema>;
 export type GenerateDailyRunInput = z.infer<typeof generateDailyRunSchema>;
 export type SubmitDailyResponseInput = z.infer<typeof submitDailyResponseSchema>;
-export type DailyTaskTitlesInput = z.infer<typeof dailyTaskTitlesSchema>;
 export type DailyTaskCompletionInput = z.infer<typeof dailyTaskCompletionSchema>;
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;

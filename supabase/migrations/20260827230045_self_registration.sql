@@ -56,4 +56,4 @@ revoke all on function private.provision_self_registered_profile() from public, 
 drop trigger if exists on_auth_user_created_self_registration on auth.users;
 create trigger on_auth_user_created_self_registration
 after insert on auth.users
-for each row execute function private.provision_self_registered_profile();
+for each row execute function private.provision_self_registered_profile();;

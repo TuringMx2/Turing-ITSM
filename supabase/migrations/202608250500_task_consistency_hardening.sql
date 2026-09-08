@@ -19,81 +19,65 @@ as $$
         and p.archived_at is null
     )
 $$;
-
 alter function private.can_manage_active_project(uuid, uuid) owner to postgres;
 revoke all on function private.can_manage_active_project(uuid, uuid)
   from public, anon, authenticated, service_role;
 grant execute on function private.can_manage_active_project(uuid, uuid) to authenticated;
-
 drop policy if exists project_workflow_columns_insert_scope
   on public.project_workflow_columns;
 drop policy if exists project_workflow_columns_update_scope
   on public.project_workflow_columns;
 drop policy if exists project_workflow_columns_delete_scope
   on public.project_workflow_columns;
-
 create policy project_workflow_columns_insert_scope on public.project_workflow_columns
 for insert to authenticated
 with check (
   private.can_manage_active_project(tenant_id, project_id)
   and created_by = (select auth.uid())
 );
-
 create policy project_workflow_columns_update_scope on public.project_workflow_columns
 for update to authenticated
 using (private.can_manage_active_project(tenant_id, project_id))
 with check (private.can_manage_active_project(tenant_id, project_id));
-
 create policy project_workflow_columns_delete_scope on public.project_workflow_columns
 for delete to authenticated
 using (private.can_manage_active_project(tenant_id, project_id));
-
 drop policy if exists tasks_insert_scope on public.tasks;
 drop policy if exists tasks_update_scope on public.tasks;
 drop policy if exists tasks_delete_scope on public.tasks;
-
 create policy tasks_insert_scope on public.tasks
 for insert to authenticated
 with check (
   private.can_manage_active_project(tenant_id, project_id)
   and created_by = (select auth.uid())
 );
-
 create policy tasks_update_scope on public.tasks
 for update to authenticated
 using (private.can_manage_active_project(tenant_id, project_id))
 with check (private.can_manage_active_project(tenant_id, project_id));
-
 create policy tasks_delete_scope on public.tasks
 for delete to authenticated
 using (private.can_manage_active_project(tenant_id, project_id));
-
 drop policy if exists task_assignees_insert_scope on public.task_assignees;
 drop policy if exists task_assignees_delete_scope on public.task_assignees;
-
 create policy task_assignees_insert_scope on public.task_assignees
 for insert to authenticated
 with check (
   private.can_manage_active_project(tenant_id, project_id)
   and assigned_by = (select auth.uid())
 );
-
 create policy task_assignees_delete_scope on public.task_assignees
 for delete to authenticated
 using (private.can_manage_active_project(tenant_id, project_id));
-
 drop policy if exists task_comments_insert_scope on public.task_comments;
-
 create policy task_comments_insert_scope on public.task_comments
 for insert to authenticated
 with check (
   private.can_manage_active_project(tenant_id, project_id)
   and author_user_id = (select auth.uid())
 );
-
 drop policy if exists task_attachments_insert_scope on public.task_attachments;
 drop policy if exists task_attachments_delete_scope on public.task_attachments;
-
 create policy task_attachments_insert_scope on public.task_attachments
 for insert to authenticated
 with check (
@@ -101,14 +85,11 @@ with check (
   and uploaded_by = (select auth.uid())
   and bucket = 'task-attachments'
 );
-
 create policy task_attachments_delete_scope on public.task_attachments
 for delete to authenticated
 using (private.can_manage_active_project(tenant_id, project_id));
-
 drop policy if exists task_attachment_objects_insert on storage.objects;
 drop policy if exists task_attachment_objects_delete on storage.objects;
-
 create policy task_attachment_objects_insert on storage.objects
 for insert to authenticated
 with check (
@@ -121,7 +102,6 @@ with check (
       and private.can_manage_active_project(a.tenant_id, a.project_id)
   )
 );
-
 create policy task_attachment_objects_delete on storage.objects
 for delete to authenticated
 using (
@@ -133,7 +113,6 @@ using (
       and private.can_manage_active_project(a.tenant_id, a.project_id)
   )
 );
-
 create function public.replace_task_assignees(
   p_task_id uuid,
   p_assignee_ids uuid[]
@@ -228,12 +207,10 @@ begin
   from unnest(v_assignee_ids) requested(user_id);
 end;
 $$;
-
 alter function public.replace_task_assignees(uuid, uuid[]) owner to postgres;
 revoke all on function public.replace_task_assignees(uuid, uuid[])
   from public, anon, authenticated, service_role;
 grant execute on function public.replace_task_assignees(uuid, uuid[]) to authenticated;
-
 create function public.list_my_cards(
   p_limit integer default 10,
   p_offset integer default 0
@@ -310,7 +287,6 @@ as $$
     'count', (select count(*) from visible_cards)
   )
 $$;
-
 alter function public.list_my_cards(integer, integer) owner to postgres;
 revoke all on function public.list_my_cards(integer, integer)
   from public, anon, authenticated, service_role;

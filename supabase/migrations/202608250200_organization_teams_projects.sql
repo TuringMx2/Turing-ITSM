@@ -20,7 +20,6 @@ create table public.teams (
   unique (tenant_id, id),
   unique (tenant_id, name)
 );
-
 create table public.team_memberships (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null,
@@ -43,7 +42,6 @@ create table public.team_memberships (
   unique (team_id, user_id),
   unique (tenant_id, team_id, user_id)
 );
-
 create table public.projects (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null,
@@ -69,7 +67,6 @@ create table public.projects (
   unique (tenant_id, id),
   unique (team_id, name)
 );
-
 create table public.project_memberships (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null,
@@ -92,7 +89,6 @@ create table public.project_memberships (
   unique (project_id, user_id),
   unique (tenant_id, project_id, user_id)
 );
-
 create function private.is_team_member(p_tenant_id uuid, p_team_id uuid)
 returns boolean
 language sql
@@ -109,7 +105,6 @@ as $$
       and p_tenant_id = private.current_tenant_id()
   )
 $$;
-
 create function private.is_project_member(p_tenant_id uuid, p_project_id uuid)
 returns boolean
 language sql
@@ -126,7 +121,6 @@ as $$
       and p_tenant_id = private.current_tenant_id()
   )
 $$;
-
 create function private.can_manage_project(p_tenant_id uuid, p_project_id uuid)
 returns boolean
 language sql
@@ -137,7 +131,6 @@ as $$
   select private.is_tenant_admin(p_tenant_id)
     or private.is_project_member(p_tenant_id, p_project_id)
 $$;
-
 create function private.shares_internal_membership(
   p_tenant_id uuid,
   p_other_user_id uuid
@@ -171,12 +164,10 @@ as $$
     )
   )
 $$;
-
 alter function private.is_team_member(uuid, uuid) owner to postgres;
 alter function private.is_project_member(uuid, uuid) owner to postgres;
 alter function private.can_manage_project(uuid, uuid) owner to postgres;
 alter function private.shares_internal_membership(uuid, uuid) owner to postgres;
-
 revoke execute on function private.is_team_member(uuid, uuid) from public;
 revoke execute on function private.is_project_member(uuid, uuid) from public;
 revoke execute on function private.can_manage_project(uuid, uuid) from public;
@@ -185,7 +176,6 @@ grant execute on function private.is_team_member(uuid, uuid) to authenticated;
 grant execute on function private.is_project_member(uuid, uuid) to authenticated;
 grant execute on function private.can_manage_project(uuid, uuid) to authenticated;
 grant execute on function private.shares_internal_membership(uuid, uuid) to authenticated;
-
 create function private.assert_internal_membership()
 returns trigger
 language plpgsql
@@ -203,7 +193,6 @@ begin
   return new;
 end;
 $$;
-
 create function private.prevent_member_role_demotion()
 returns trigger
 language plpgsql
@@ -221,122 +210,99 @@ begin
   return new;
 end;
 $$;
-
 create trigger assert_team_membership_internal
 before insert or update on public.team_memberships
 for each row execute function private.assert_internal_membership();
-
 create trigger assert_project_membership_internal
 before insert or update on public.project_memberships
 for each row execute function private.assert_internal_membership();
-
 create trigger prevent_profile_member_role_demotion
 before update of role on public.profiles
 for each row execute function private.prevent_member_role_demotion();
-
 create trigger set_teams_updated_at
 before update on public.teams
 for each row execute function private.set_updated_at();
-
 create trigger set_projects_updated_at
 before update on public.projects
 for each row execute function private.set_updated_at();
-
 revoke execute on function private.assert_internal_membership() from public;
 revoke execute on function private.prevent_member_role_demotion() from public;
-
 create index teams_tenant_idx on public.teams (tenant_id);
 create index team_memberships_user_idx on public.team_memberships (user_id);
 create index projects_tenant_team_idx on public.projects (tenant_id, team_id);
 create index project_memberships_user_idx on public.project_memberships (user_id);
-
 alter table public.teams enable row level security;
 alter table public.team_memberships enable row level security;
 alter table public.projects enable row level security;
 alter table public.project_memberships enable row level security;
-
 create policy teams_read_scope on public.teams
 for select to authenticated
 using (
   private.is_tenant_admin(tenant_id)
   or private.is_team_member(tenant_id, id)
 );
-
 create policy teams_admin_insert on public.teams
 for insert to authenticated
 with check (
   private.is_tenant_admin(tenant_id)
   and created_by = (select auth.uid())
 );
-
 create policy teams_admin_update on public.teams
 for update to authenticated
 using (private.is_tenant_admin(tenant_id))
 with check (private.is_tenant_admin(tenant_id));
-
 create policy teams_admin_delete on public.teams
 for delete to authenticated
 using (private.is_tenant_admin(tenant_id));
-
 create policy team_memberships_read_scope on public.team_memberships
 for select to authenticated
 using (
   private.is_tenant_admin(tenant_id)
   or private.is_team_member(tenant_id, team_id)
 );
-
 create policy team_memberships_admin_insert on public.team_memberships
 for insert to authenticated
 with check (
   private.is_tenant_admin(tenant_id)
   and created_by = (select auth.uid())
 );
-
 create policy team_memberships_admin_delete on public.team_memberships
 for delete to authenticated
 using (private.is_tenant_admin(tenant_id));
-
 create policy projects_read_scope on public.projects
 for select to authenticated
 using (
   private.is_tenant_admin(tenant_id)
   or private.is_project_member(tenant_id, id)
 );
-
 create policy projects_admin_insert on public.projects
 for insert to authenticated
 with check (
   private.is_tenant_admin(tenant_id)
   and created_by = (select auth.uid())
 );
-
 create policy projects_admin_update on public.projects
 for update to authenticated
 using (private.is_tenant_admin(tenant_id))
 with check (private.is_tenant_admin(tenant_id));
-
 create policy projects_admin_delete on public.projects
 for delete to authenticated
 using (private.is_tenant_admin(tenant_id));
-
 create policy project_memberships_read_scope on public.project_memberships
 for select to authenticated
 using (
   private.is_tenant_admin(tenant_id)
   or private.is_project_member(tenant_id, project_id)
 );
-
 create policy project_memberships_admin_insert on public.project_memberships
 for insert to authenticated
 with check (
   private.is_tenant_admin(tenant_id)
   and created_by = (select auth.uid())
 );
-
 create policy project_memberships_admin_delete on public.project_memberships
 for delete to authenticated
 using (private.is_tenant_admin(tenant_id));
-
 create policy profiles_read_shared_internal_scope on public.profiles
 for select to authenticated
 using (
@@ -344,7 +310,6 @@ using (
   and tenant_id = private.current_tenant_id()
   and private.shares_internal_membership(tenant_id, id)
 );
-
 grant select, insert, update, delete on public.teams to authenticated;
 grant select, insert, delete on public.team_memberships to authenticated;
 grant select, insert, update, delete on public.projects to authenticated;
