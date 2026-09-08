@@ -5,16 +5,13 @@
 
 create extension if not exists "pgcrypto";
 create schema if not exists private;
-
 create type public.app_role as enum (
   'customer_user',
   'customer_manager',
   'support_agent',
   'admin'
 );
-
 create type public.ticket_priority as enum ('low', 'moderate', 'high', 'urgent');
-
 create type public.ticket_status as enum (
   'new',
   'assigned',
@@ -26,10 +23,8 @@ create type public.ticket_status as enum (
   'closed',
   'cancelled'
 );
-
 create type public.comment_visibility as enum ('public', 'internal');
 create type public.attachment_visibility as enum ('public', 'internal');
-
 create table public.tenants (
   id uuid primary key default gen_random_uuid(),
   name text not null,
@@ -41,7 +36,6 @@ create table public.tenants (
   constraint tenants_slug_check check (slug ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'),
   constraint tenants_name_check check (char_length(btrim(name)) between 2 and 160)
 );
-
 create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   tenant_id uuid references public.tenants(id) on delete restrict,
@@ -58,19 +52,16 @@ create table public.profiles (
   ),
   unique (tenant_id, id)
 );
-
 create table public.permissions (
   key text primary key,
   description text not null
 );
-
 create table public.role_permissions (
   role public.app_role not null,
   permission_key text not null references public.permissions(key) on delete cascade,
   created_at timestamptz not null default now(),
   primary key (role, permission_key)
 );
-
 create table public.reporters (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants(id) on delete restrict,
@@ -90,7 +81,6 @@ create table public.reporters (
     on delete restrict,
   unique (tenant_id, id)
 );
-
 create table public.channels (
   id uuid primary key default gen_random_uuid(),
   code text not null unique,
@@ -98,9 +88,7 @@ create table public.channels (
   is_active boolean not null default true,
   created_at timestamptz not null default now()
 );
-
 create sequence public.ticket_number_seq;
-
 create table public.tickets (
   id uuid primary key default gen_random_uuid(),
   ticket_number text not null unique,
@@ -135,7 +123,6 @@ create table public.tickets (
     on delete restrict,
   unique (tenant_id, id)
 );
-
 create table public.ticket_comments (
   id uuid primary key default gen_random_uuid(),
   ticket_id uuid not null,
@@ -164,7 +151,6 @@ create table public.ticket_comments (
     on delete restrict,
   unique (tenant_id, id)
 );
-
 create table public.ticket_attachments (
   id uuid primary key default gen_random_uuid(),
   ticket_id uuid not null,
@@ -197,7 +183,6 @@ create table public.ticket_attachments (
     on delete restrict,
   unique (tenant_id, id)
 );
-
 create table public.ticket_sources (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null,
@@ -212,7 +197,6 @@ create table public.ticket_sources (
     on delete cascade,
   unique (ticket_id)
 );
-
 create table public.ticket_access_tokens (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null,
@@ -236,7 +220,6 @@ create table public.ticket_access_tokens (
     references public.reporters (tenant_id, id)
     on delete restrict
 );
-
 create table public.audit_events (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid references public.tenants(id) on delete restrict,
@@ -258,7 +241,6 @@ create table public.audit_events (
     references public.profiles (tenant_id, id)
     on delete restrict
 );
-
 insert into public.permissions (key, description) values
   ('ticket:create', 'Create tickets'),
   ('ticket:read:own', 'Read own tickets'),
@@ -308,7 +290,6 @@ insert into public.permissions (key, description) values
   ('audit:read:ticket', 'Read ticket audit'),
   ('audit:read:global', 'Read global audit'),
   ('audit:export', 'Export audit');
-
 insert into public.role_permissions (role, permission_key)
 select role_name::public.app_role, permission_key
 from (values
@@ -403,13 +384,11 @@ from (values
   ('admin', 'audit:read:global'),
   ('admin', 'audit:export')
 ) as grants(role_name, permission_key);
-
 insert into public.channels (code, label) values
   ('embedded_chat', 'Embedded chat'),
   ('web_form', 'Web form'),
   ('whatsapp', 'WhatsApp'),
   ('api', 'API');
-
 create function private.current_role()
 returns public.app_role
 language sql
@@ -419,7 +398,6 @@ set search_path = ''
 as $$
   select p.role from public.profiles p where p.id = (select auth.uid())
 $$;
-
 create function private.current_tenant_id()
 returns uuid
 language sql
@@ -429,7 +407,6 @@ set search_path = ''
 as $$
   select p.tenant_id from public.profiles p where p.id = (select auth.uid())
 $$;
-
 create function private.is_tenant_admin(p_tenant_id uuid)
 returns boolean
 language sql
@@ -444,7 +421,6 @@ as $$
     false
   )
 $$;
-
 create function private.is_internal_user()
 returns boolean
 language sql
@@ -458,7 +434,6 @@ as $$
     false
   )
 $$;
-
 create function private.can_read_ticket(p_ticket_id uuid)
 returns boolean
 language sql
@@ -486,13 +461,11 @@ as $$
     where t.id = p_ticket_id
   ), false)
 $$;
-
 alter function private.current_role() owner to postgres;
 alter function private.current_tenant_id() owner to postgres;
 alter function private.is_tenant_admin(uuid) owner to postgres;
 alter function private.is_internal_user() owner to postgres;
 alter function private.can_read_ticket(uuid) owner to postgres;
-
 revoke all on schema private from public;
 grant usage on schema private to authenticated;
 revoke execute on function private.current_role() from public;
@@ -505,7 +478,6 @@ grant execute on function private.current_tenant_id() to authenticated;
 grant execute on function private.is_tenant_admin(uuid) to authenticated;
 grant execute on function private.is_internal_user() to authenticated;
 grant execute on function private.can_read_ticket(uuid) to authenticated;
-
 create function private.set_updated_at()
 returns trigger
 language plpgsql
@@ -516,7 +488,6 @@ begin
   return new;
 end;
 $$;
-
 create function private.prepare_ticket()
 returns trigger
 language plpgsql
@@ -561,7 +532,6 @@ begin
   return new;
 end;
 $$;
-
 create function private.prevent_ticket_scope_change()
 returns trigger
 language plpgsql
@@ -577,7 +547,6 @@ begin
   return new;
 end;
 $$;
-
 create function private.prevent_ticket_identity_change()
 returns trigger
 language plpgsql
@@ -592,44 +561,34 @@ begin
   return new;
 end;
 $$;
-
 create trigger set_tenants_updated_at
 before update on public.tenants
 for each row execute function private.set_updated_at();
-
 create trigger set_profiles_updated_at
 before update on public.profiles
 for each row execute function private.set_updated_at();
-
 create trigger set_reporters_updated_at
 before update on public.reporters
 for each row execute function private.set_updated_at();
-
 create trigger prepare_ticket_before_write
 before insert or update on public.tickets
 for each row execute function private.prepare_ticket();
-
 create trigger set_tickets_updated_at
 before update on public.tickets
 for each row execute function private.set_updated_at();
-
 create trigger prevent_ticket_identity_change
 before update on public.tickets
 for each row execute function private.prevent_ticket_identity_change();
-
 create trigger set_ticket_comments_updated_at
 before update on public.ticket_comments
 for each row execute function private.set_updated_at();
-
 create trigger prevent_ticket_comments_scope_change
 before update on public.ticket_comments
 for each row execute function private.prevent_ticket_scope_change();
-
 revoke execute on function private.set_updated_at() from public;
 revoke execute on function private.prepare_ticket() from public;
 revoke execute on function private.prevent_ticket_scope_change() from public;
 revoke execute on function private.prevent_ticket_identity_change() from public;
-
 create function public.resolve_ticket_access(p_token text)
 returns jsonb
 language sql
@@ -658,7 +617,6 @@ as $$
       and tok.revoked_at is null
   ), '{}'::jsonb)
 $$;
-
 create function public.add_ticket_public_comment_by_token(p_token text, p_body text)
 returns jsonb
 language plpgsql
@@ -694,7 +652,6 @@ begin
   return to_jsonb(v_comment);
 end;
 $$;
-
 create function public.create_ticket_access_token(
   p_ticket_id uuid,
   p_purpose text,
@@ -745,7 +702,6 @@ begin
   return v_id;
 end;
 $$;
-
 create function public.provision_profile(
   p_user_id uuid,
   p_role public.app_role,
@@ -779,12 +735,10 @@ begin
     email = excluded.email;
 end;
 $$;
-
 alter function public.resolve_ticket_access(text) owner to postgres;
 alter function public.add_ticket_public_comment_by_token(text, text) owner to postgres;
 alter function public.create_ticket_access_token(uuid, text, text, timestamptz, uuid) owner to postgres;
 alter function public.provision_profile(uuid, public.app_role, uuid, text, text) owner to postgres;
-
 revoke execute on function public.resolve_ticket_access(text) from public, anon, authenticated, service_role;
 revoke execute on function public.add_ticket_public_comment_by_token(text, text) from public, anon, authenticated, service_role;
 revoke execute on function public.create_ticket_access_token(uuid, text, text, timestamptz, uuid) from public, anon, authenticated, service_role;
@@ -793,10 +747,8 @@ grant execute on function public.resolve_ticket_access(text) to anon, authentica
 grant execute on function public.add_ticket_public_comment_by_token(text, text) to anon, authenticated, service_role;
 grant execute on function public.create_ticket_access_token(uuid, text, text, timestamptz, uuid) to authenticated, service_role;
 grant execute on function public.provision_profile(uuid, public.app_role, uuid, text, text) to authenticated;
-
 revoke all on sequence public.ticket_number_seq from public, anon, authenticated, service_role;
 grant usage, select on sequence public.ticket_number_seq to authenticated, service_role;
-
 create index profiles_tenant_idx on public.profiles (tenant_id);
 create index profiles_role_idx on public.profiles (role);
 create index reporters_tenant_idx on public.reporters (tenant_id);
@@ -816,7 +768,6 @@ create index ticket_access_tokens_ticket_idx on public.ticket_access_tokens (tic
 create index ticket_access_tokens_reporter_idx on public.ticket_access_tokens (reporter_id);
 create index audit_events_tenant_created_idx on public.audit_events (tenant_id, created_at desc);
 create index audit_events_resource_idx on public.audit_events (resource_type, resource_id);
-
 alter table public.tenants enable row level security;
 alter table public.profiles enable row level security;
 alter table public.permissions enable row level security;
@@ -829,16 +780,13 @@ alter table public.ticket_attachments enable row level security;
 alter table public.ticket_sources enable row level security;
 alter table public.ticket_access_tokens enable row level security;
 alter table public.audit_events enable row level security;
-
 create policy tenants_read_scope on public.tenants
 for select to authenticated
 using (id = private.current_tenant_id());
-
 create policy tenants_admin_write on public.tenants
 for all to authenticated
 using (private.is_tenant_admin(id))
 with check (private.is_tenant_admin(id));
-
 create policy profiles_read_scope on public.profiles
 for select to authenticated
 using (
@@ -858,29 +806,23 @@ using (
     )
   )
 );
-
 create policy profiles_admin_insert on public.profiles
 for insert to authenticated
 with check (private.is_tenant_admin(tenant_id));
-
 create policy profiles_admin_update on public.profiles
 for update to authenticated
 using (private.is_tenant_admin(tenant_id))
 with check (private.is_tenant_admin(tenant_id));
-
 create policy permissions_authenticated_read on public.permissions
 for select to authenticated using (true);
-
 create policy role_permissions_authenticated_read on public.role_permissions
 for select to authenticated using (true);
-
 create policy reporters_internal_read on public.reporters
 for select to authenticated
 using (
   private.is_internal_user()
   and tenant_id = private.current_tenant_id()
 );
-
 create policy reporters_internal_write on public.reporters
 for all to authenticated
 using (
@@ -891,20 +833,16 @@ with check (
   private.is_internal_user()
   and tenant_id = private.current_tenant_id()
 );
-
 create policy channels_authenticated_read on public.channels
 for select to authenticated
 using (is_active or private.is_tenant_admin(private.current_tenant_id()));
-
 create policy channels_admin_write on public.channels
 for all to authenticated
 using (private.is_tenant_admin(private.current_tenant_id()))
 with check (private.is_tenant_admin(private.current_tenant_id()));
-
 create policy tickets_read_scope on public.tickets
 for select to authenticated
 using (private.can_read_ticket(id));
-
 create policy tickets_insert_scope on public.tickets
 for insert to authenticated
 with check (
@@ -921,7 +859,6 @@ with check (
     and created_by_user_id = (select auth.uid())
   )
 );
-
 create policy tickets_internal_update on public.tickets
 for update to authenticated
 using (
@@ -932,17 +869,14 @@ with check (
   private.is_internal_user()
   and tenant_id = private.current_tenant_id()
 );
-
 create policy tickets_admin_delete on public.tickets
 for delete to authenticated using (private.is_tenant_admin(tenant_id));
-
 create policy ticket_comments_read_scope on public.ticket_comments
 for select to authenticated
 using (
   private.can_read_ticket(ticket_id)
   and (visibility = 'public' or private.is_internal_user())
 );
-
 create policy ticket_comments_insert_scope on public.ticket_comments
 for insert to authenticated
 with check (
@@ -950,7 +884,6 @@ with check (
   and author_user_id = (select auth.uid())
   and (visibility = 'public' or private.is_internal_user())
 );
-
 create policy ticket_comments_update_scope on public.ticket_comments
 for update to authenticated
 using (
@@ -965,14 +898,12 @@ with check (
   )
   and (visibility = 'public' or private.is_internal_user())
 );
-
 create policy ticket_attachments_read_scope on public.ticket_attachments
 for select to authenticated
 using (
   private.can_read_ticket(ticket_id)
   and (visibility = 'public' or private.is_internal_user())
 );
-
 create policy ticket_attachments_insert_scope on public.ticket_attachments
 for insert to authenticated
 with check (
@@ -981,14 +912,12 @@ with check (
   and bucket = 'ticket-attachments'
   and (visibility = 'public' or private.is_internal_user())
 );
-
 create policy ticket_attachments_delete_scope on public.ticket_attachments
 for delete to authenticated
 using (
   uploaded_by_user_id = (select auth.uid())
   or private.is_tenant_admin(tenant_id)
 );
-
 create policy audit_events_read_scope on public.audit_events
 for select to authenticated
 using (
@@ -1000,7 +929,6 @@ using (
     and (private.is_internal_user() or action not like '%internal%')
   )
 );
-
 grant select, insert, update, delete on public.tenants to authenticated;
 grant select, insert, update on public.profiles to authenticated;
 grant select on public.permissions, public.role_permissions to authenticated;
@@ -1009,13 +937,11 @@ grant select, insert, update, delete on public.tickets to authenticated;
 grant select, insert, update on public.ticket_comments to authenticated;
 grant select, insert, delete on public.ticket_attachments to authenticated;
 grant select on public.audit_events to authenticated;
-
 insert into storage.buckets (id, name, public, file_size_limit)
 values ('ticket-attachments', 'ticket-attachments', false, 10485760)
 on conflict (id) do update set
   public = excluded.public,
   file_size_limit = excluded.file_size_limit;
-
 create policy ticket_attachment_objects_read on storage.objects
 for select to authenticated
 using (
@@ -1027,7 +953,6 @@ using (
       and (a.visibility = 'public' or private.is_internal_user())
   )
 );
-
 create policy ticket_attachment_objects_insert on storage.objects
 for insert to authenticated
 with check (
@@ -1039,7 +964,6 @@ with check (
       and private.can_read_ticket(a.ticket_id)
   )
 );
-
 create policy ticket_attachment_objects_delete on storage.objects
 for delete to authenticated
 using (

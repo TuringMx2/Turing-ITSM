@@ -14,6 +14,7 @@ import {
   type TaskDetail,
 } from "@/app/actions/tasks";
 import { formatTaskEstimate, type TaskEstimateUnit } from "@/lib/task-estimate";
+import { AssigneePicker } from "./AssigneePicker";
 import { useModalFocus } from "./use-modal-focus";
 
 const kibibyteFormatter = new Intl.NumberFormat("es-ES", {
@@ -115,15 +116,6 @@ export function TaskDetailDialog({
       active = false;
     };
   }, [taskId]);
-
-  function toggleAssignee(userId: string) {
-    if (readOnly) return;
-    setAssigneeIds((current) =>
-      current.includes(userId)
-        ? current.filter((id) => id !== userId)
-        : [...current, userId],
-    );
-  }
 
   function saveTask(event: React.FormEvent) {
     event.preventDefault();
@@ -262,7 +254,7 @@ export function TaskDetailDialog({
               </div>
               <fieldset disabled={readOnly || pending} className="board-assignees">
                 <legend>Personas asignadas</legend>
-                {members.length === 0 ? <p className="muted small-text">No hay integrantes disponibles.</p> : members.map((member) => <label key={member.id} className="board-check-option"><input type="checkbox" name="assigneeIds" value={member.id} checked={assigneeIds.includes(member.id)} onChange={() => toggleAssignee(member.id)} /><span>{member.full_name || member.email}</span></label>)}
+                {members.length === 0 ? <p className="muted small-text">No hay integrantes disponibles.</p> : <AssigneePicker members={members} selectedIds={assigneeIds} onChange={setAssigneeIds} disabled={readOnly || pending} />}
               </fieldset>
               {!readOnly ? <button type="submit" className="primary-button board-submit-button" disabled={pending}>{pending ? "Guardando…" : "Guardar tarea"}</button> : null}
             </form>

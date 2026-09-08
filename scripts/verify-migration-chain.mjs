@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * Bounded static verification for the rebuilt local migration chain.
- * This script verifies file lineage and selected structural controls. It does not
+ * Bounded static verification for the canonical fetched migration chain.
+ * This script verifies source identity, dependency ordering, and selected structural controls. It does not
  * execute PostgreSQL, prove RLS behavior, or replace a clean local database reset.
  */
 
@@ -20,24 +20,70 @@ const expectedMigrations = [
   "202608250300_daily_questions_schedules_submissions.sql",
   "202608250400_project_workflows_tasks_activity.sql",
   "202608250500_task_consistency_hardening.sql",
-  "202608250600_account_status_and_management.sql",
-  "202608250650_superadmin_role_enum.sql",
-  "202608250700_superadmin_role_access.sql",
-  "202608250800_self_registration.sql",
-  "202608250900_authorization_refinement.sql",
-  "202608251000_daily_run_scheduler.sql",
-  "202608251100_registration_full_name.sql",
-  "202608251200_daily_selected_date_integrity.sql",
-  "202608251300_daily_task_planning_completion.sql",
-  "202608251400_task_effort_estimates.sql",
-  "202609051100_current_sprint_tasks.sql",
+  "20260826190341_202608250600_account_status_and_management.sql",
+  "20260827224423_superadmin_role_enum.sql",
+  "20260827224502_superadmin_role_access.sql",
+  "20260827230045_self_registration.sql",
+  "20260827232352_authorization_refinement.sql",
+  "20260828033756_daily_run_scheduler.sql",
+  "20260828162326_registration_full_name.sql",
+  "20260828220559_daily_selected_date_integrity.sql",
+  "20260902023428_202609010100_jira_integration_schema.sql.sql",
+  "20260902023438_202609010200_github_integration_schema.sql.sql",
+  "20260902023445_202609010300_cloud_costs_schema.sql.sql",
+  "20260902023451_202609010400_kpi_sql_functions.sql.sql",
+  "20260902052511_202609010500_kpi_rpc_fix_signatures.sql.sql",
+  "20260902052628_202609010600_grants_provision_profile.sql.sql",
+  "20260902053035_202609010700_kpi_rpc_exact_signatures.sql.sql",
+  "20260902055755_202609010800_projects_integration_links.sql.sql",
+  "20260902060056_202609010810_kpi_rpc_v4_project_filters.sql.sql",
+  "20260902155153_202609020900_cloud_rls_admin_only_protect_read_scope.sql.sql",
+  "20260902164608_202609021200_projects_leader_id.sql.sql",
+  "20260902172357_202609021400_teams_role_enum.sql.sql",
+  "20260902211922_202609020900_cloud_rls_admin_only_protect_read_scope.sql.sql",
+  "20260902211941_202609021400_teams_role_enum.sql.sql",
+  "20260902212000_20260902_1000_kpi_charts_missing_rpcs.sql.sql",
+  "20260902212018_20260902_1100_fix_project_id_propagation.sql.sql",
+  "20260902215130_20260902_1500_security_definer_rpcs_and_rls_policies.sql.sql",
+  "20260903232143_daily_task_planning_completion.sql",
+  "20260905062138_task_effort_estimates.sql",
+  "20260905171925_current_sprint_tasks.sql",
+  "20260907232440_daily_activity_lifecycle.sql",
 ];
 
 const expectedLegacy = new Map([
-  ["20260605_initial_itsm_schema.sql", { bytes: 25437, sha256: "5dbc74e12b86540e191a6ce16ce9438b50e59f1c0d7786aa0a9a5f2f8077e3cb" }],
-  ["20260806_initial_itsm_schema.sql", { bytes: 42834, sha256: "742cb7c778c700ed95ab5715ec969fd20b216167763926ec472e1672e5d2044f" }],
-  ["20260825_workers_daily_tasks.sql", { bytes: 10589, sha256: "25aba5ec4564e9289997a3d5980eb6010c69c178d898e0b5955a92ab48f3c4b3" }],
+  ["20260605_initial_itsm_schema.sql", { normalizedBytes: 25437, sha256: "5dbc74e12b86540e191a6ce16ce9438b50e59f1c0d7786aa0a9a5f2f8077e3cb" }],
+  ["20260806_initial_itsm_schema.sql", { normalizedBytes: 41799, sha256: "6a275f3916423fd4b36d82b14937742a5a2d44ec2cc9756cbb95552a2470b15f" }],
+  ["20260825_workers_daily_tasks.sql", { normalizedBytes: 10589, sha256: "25aba5ec4564e9289997a3d5980eb6010c69c178d898e0b5955a92ab48f3c4b3" }],
 ]);
+
+const retiredMigrationVersions = new Set([
+  "202608250600",
+  "202608250650",
+  "202608250700",
+  "202608250800",
+  "202608250900",
+  "202608251000",
+  "202608251100",
+  "202608251200",
+  "202608251300",
+  "202608251400",
+  "202609051100",
+  "202609051200",
+]);
+
+const requiredOrdering = [
+  ["organization schema follows ticketing identity", "202608250100_ticketing_identity_baseline.sql", "202608250200_organization_teams_projects.sql"],
+  ["Daily schema follows organization schema", "202608250200_organization_teams_projects.sql", "202608250300_daily_questions_schedules_submissions.sql"],
+  ["task schema follows organization schema", "202608250200_organization_teams_projects.sql", "202608250400_project_workflows_tasks_activity.sql"],
+  ["task hardening follows task schema", "202608250400_project_workflows_tasks_activity.sql", "202608250500_task_consistency_hardening.sql"],
+  ["account status replacement follows task hardening", "202608250500_task_consistency_hardening.sql", "20260826190341_202608250600_account_status_and_management.sql"],
+  ["selected-date integrity follows Daily scheduling", "20260828033756_daily_run_scheduler.sql", "20260828220559_daily_selected_date_integrity.sql"],
+  ["Daily task planning follows selected-date integrity", "20260828220559_daily_selected_date_integrity.sql", "20260903232143_daily_task_planning_completion.sql"],
+  ["task estimates follow Daily task planning", "20260903232143_daily_task_planning_completion.sql", "20260905062138_task_effort_estimates.sql"],
+  ["current-sprint filtering follows task estimates", "20260905062138_task_effort_estimates.sql", "20260905171925_current_sprint_tasks.sql"],
+  ["Daily activity lifecycle follows Daily task planning", "20260903232143_daily_task_planning_completion.sql", "20260907232440_daily_activity_lifecycle.sql"],
+];
 
 let failures = 0;
 
@@ -60,16 +106,26 @@ check("legacy migration directory exists", existsSync(legacyDir));
 const migrationNames = existsSync(migrationsDir)
   ? readdirSync(migrationsDir).filter((name) => name.endsWith(".sql")).sort()
   : [];
-check("executable chain contains exactly the sixteen expected migrations", JSON.stringify(migrationNames) === JSON.stringify(expectedMigrations));
+const migrationVersions = migrationNames.map((name) => name.match(/^(\d{12,14})_.+\.sql$/)?.[1] ?? "");
+const migrationPosition = new Map(migrationNames.map((name, index) => [name, index]));
+
+check("executable chain contains exactly the thirty-four canonical migrations", JSON.stringify(migrationNames) === JSON.stringify(expectedMigrations));
 check("migration filenames are already in deterministic lexical order", JSON.stringify(migrationNames) === JSON.stringify([...migrationNames].sort()));
+check("migration filenames have canonical version prefixes", migrationVersions.every(Boolean));
+check("migration versions are unique", new Set(migrationVersions).size === migrationVersions.length);
+check("retired migration identities are absent", migrationVersions.every((version) => !retiredMigrationVersions.has(version)));
+
+for (const [label, prerequisite, dependent] of requiredOrdering) {
+  check(label, (migrationPosition.get(prerequisite) ?? Infinity) < (migrationPosition.get(dependent) ?? -Infinity));
+}
 
 for (const [name, expected] of expectedLegacy) {
   const path = join(legacyDir, name);
   check(`legacy file exists: ${name}`, existsSync(path));
   if (!existsSync(path)) continue;
-  const bytes = readFileSync(path);
-  check(`legacy byte length preserved: ${name}`, bytes.length === expected.bytes);
-  check(`legacy SHA-256 preserved: ${name}`, sha256(bytes) === expected.sha256);
+  const bytes = Buffer.from(readFileSync(path, "utf8").replace(/\r\n/g, "\n"), "utf8");
+  check(`legacy normalized byte length preserved: ${name}`, bytes.length === expected.normalizedBytes);
+  check(`legacy normalized SHA-256 preserved: ${name}`, sha256(bytes) === expected.sha256);
   check(`legacy file is not executable: ${name}`, !existsSync(join(migrationsDir, name)));
 }
 
@@ -78,9 +134,10 @@ const migrationSql = migrationNames.map((name) => ({
   sql: readFileSync(join(migrationsDir, name), "utf8"),
 }));
 const allSql = migrationSql.map(({ sql }) => sql).join("\n");
-const selectedDateMigrationSql = migrationSql.find(({ name }) => name === "202608251200_daily_selected_date_integrity.sql")?.sql ?? "";
-const taskEstimateMigrationSql = migrationSql.find(({ name }) => name === "202608251400_task_effort_estimates.sql")?.sql ?? "";
-const currentSprintMigrationSql = migrationSql.find(({ name }) => name === "202609051100_current_sprint_tasks.sql")?.sql ?? "";
+const selectedDateMigrationSql = migrationSql.find(({ name }) => name === "20260828220559_daily_selected_date_integrity.sql")?.sql ?? "";
+const taskEstimateMigrationSql = migrationSql.find(({ name }) => name === "20260905062138_task_effort_estimates.sql")?.sql ?? "";
+const currentSprintMigrationSql = migrationSql.find(({ name }) => name === "20260905171925_current_sprint_tasks.sql")?.sql ?? "";
+const dailyActivityMigrationSql = migrationSql.find(({ name }) => name === "20260907232440_daily_activity_lifecycle.sql")?.sql ?? "";
 
 for (const { name, sql } of migrationSql) {
   const dollarQuotes = sql.match(/\$\$/g)?.length ?? 0;
@@ -94,12 +151,17 @@ for (const { name, sql } of migrationSql) {
 }
 
 const createdTables = [...allSql.matchAll(/create table\s+public\.([a-z0-9_]+)/gi)].map((match) => match[1]);
-const createdTypes = [...allSql.matchAll(/create type\s+public\.([a-z0-9_]+)/gi)].map((match) => match[1]);
-const createdIndexes = [...allSql.matchAll(/create (?:unique )?index\s+([a-z0-9_]+)/gi)].map((match) => match[1]);
+const createdTypes = [...allSql.matchAll(/create type\s+public\.([a-z0-9_]+)/gi)].map((match) => ({ name: match[1], index: match.index }));
+const createdIndexes = [...allSql.matchAll(/create\s+(?:unique\s+)?index\s+(?:if\s+not\s+exists\s+)?([a-z0-9_]+)/gi)].map((match) => match[1]);
 const createdFunctions = [...allSql.matchAll(/create function\s+([a-z0-9_.]+)/gi)].map((match) => match[1]);
 const referencedPublicTables = [...allSql.matchAll(/references\s+public\.([a-z0-9_]+)/gi)].map((match) => match[1]);
+const createdTypeNames = createdTypes.map(({ name }) => name);
+const repeatedTypesAreGuarded = createdTypes.every(({ name, index }, occurrence) => {
+  if (createdTypeNames.indexOf(name) === occurrence) return true;
+  return /;\s*exception when duplicate_object then null;\s*end\s+\$\$;/i.test(allSql.slice(index, index + 500));
+});
 check("no duplicate public table definitions", new Set(createdTables).size === createdTables.length);
-check("no duplicate public type definitions", new Set(createdTypes).size === createdTypes.length);
+check("repeated public type declarations are duplicate-object guarded", repeatedTypesAreGuarded);
 check("no duplicate index names", new Set(createdIndexes).size === createdIndexes.length);
 check("no duplicate function names", new Set(createdFunctions).size === createdFunctions.length);
 check("all public foreign-key targets are defined in the chain", referencedPublicTables.every((name) => createdTables.includes(name)));
@@ -141,13 +203,15 @@ const requiredControls = [
   ["Daily questions carry stable semantic metadata", /alter table public\.daily_questions[\s\S]*add column semantic_key text[\s\S]*daily_questions_semantic_key_check/i],
   ["Daily task items are separate from project tasks and tenant scoped", /create table public\.daily_task_items[\s\S]*tenant_id uuid not null[\s\S]*daily_task_items_team_tenant_fk/i],
   ["Daily task items preserve team and user ownership", /create table public\.daily_task_items[\s\S]*foreign key \(tenant_id, team_id\)[\s\S]*foreign key \(tenant_id, user_id\)/i],
-  ["Daily task inserts use an authenticated server RPC", allSql.includes("create function public.add_daily_task_items") && allSql.includes("revoke insert, update, delete on public.daily_task_items from authenticated") && allSql.includes("grant execute on function public.add_daily_task_items(uuid, date, text[]) to authenticated;")],
+  ["Daily activities have immutable source-answer provenance", /add column source_submission_id uuid[\s\S]*source_question_id uuid[\s\S]*source_line_ordinal integer[\s\S]*daily_task_items_source_identity_check[\s\S]*daily_task_items_source_answer_fk[\s\S]*daily_task_items_source_identity_uniq/i.test(dailyActivityMigrationSql)],
+  ["Daily activity creation has no authenticated alternate RPC", /revoke all on function public\.add_daily_task_items\(uuid, date, text\[\]\) from public, anon, authenticated, service_role;/i.test(dailyActivityMigrationSql) && !/grant execute on function public\.add_daily_task_items\(uuid, date, text\[\]\) to authenticated;/i.test(dailyActivityMigrationSql)],
   ["Daily completion is unique per team user and logical date", /create table public\.daily_task_completions[\s\S]*unique \(tenant_id, team_id, user_id, logical_date\)/i],
   ["Daily completion snapshots are immutable", /create function private\.prevent_daily_task_completion_change\(\)[\s\S]*Daily task completion evidence is immutable[\s\S]*create trigger prevent_daily_task_completion_item_change/i],
-  ["Daily response task wrapper derives tasks from the canonical answer", /create function public\.submit_daily_response_with_tasks\([\s\S]*p_planned_task_titles text\[\][\s\S]*task titles are never trusted[\s\S]*rq\.semantic_key = 'planned_work'[\s\S]*jsonb_array_elements\(p_answers\)[\s\S]*regexp_split_to_table[\s\S]*public\.submit_daily_response\(p_run_ids, p_answers, p_local_date\)[\s\S]*insert into public\.daily_task_items[\s\S]*revoke all on function public\.submit_daily_response_with_tasks\(uuid\[\], jsonb, date, text\[\]\) from public, anon, authenticated, service_role;[\s\S]*grant execute on function public\.submit_daily_response_with_tasks\(uuid\[\], jsonb, date, text\[\]\) to authenticated;/i],
-  ["Daily response wrapper closes the legacy authenticated alternate path", /grant execute on function public\.submit_daily_response_with_tasks\(uuid\[\], jsonb, date, text\[\]\) to authenticated;[\s\S]*revoke execute on function public\.submit_daily_response\(uuid\[\], jsonb, date\) from authenticated;/i],
+  ["Daily response wrapper derives activities from the canonical answer", /create or replace function public\.submit_daily_response_with_tasks\([\s\S]*p_carried_task_ids uuid\[\][\s\S]*rq\.semantic_key = 'planned_work'[\s\S]*jsonb_array_elements\(p_answers\)[\s\S]*regexp_split_to_table[\s\S]*public\.submit_daily_response\(p_run_ids, p_answers, p_local_date\)[\s\S]*source_submission_id[\s\S]*revoke all on function public\.submit_daily_response_with_tasks\(uuid\[\], jsonb, date, uuid\[\]\) from public, anon, authenticated, service_role;[\s\S]*grant execute on function public\.submit_daily_response_with_tasks\(uuid\[\], jsonb, date, uuid\[\]\) to authenticated;/i.test(dailyActivityMigrationSql)],
+  ["Daily response wrapper validates carried identities and closes the legacy path", /v_carried_ids is distinct from v_expected_carried_ids[\s\S]*revoke execute on function public\.submit_daily_response\(uuid\[\], jsonb, date\) from authenticated;/i.test(dailyActivityMigrationSql)],
   ["Daily completion RPC uses the team IANA timezone and server cutoff", allSql.includes("v_local_now := clock_timestamp() at time zone v_schedule.timezone_name;") && allSql.includes("v_local_now::time < time '16:00'") && allSql.includes("p_logical_date <> v_local_now::date")],
   ["Daily completion RPC locks tasks and permits only delete or carry", allSql.includes("for update") && allSql.includes("not in ('delete', 'carry')") && allSql.includes("p_unchecked_resolution = 'carry'")],
+  ["Daily completion carries to the next scheduled local Daily", /create or replace function public\.submit_daily_task_completion[\s\S]*for v_offset in 1\.\.7 loop[\s\S]*extract\(isodow from v_next_logical_date\)[\s\S]*v_schedule\.scheduled_weekdays[\s\S]*v_next_logical_date/i.test(dailyActivityMigrationSql)],
   ["Daily completion RPC is authenticated only", /revoke all on function public\.submit_daily_task_completion\(uuid, date, uuid\[\], text\) from public, anon, authenticated, service_role;[\s\S]*grant execute on function public\.submit_daily_task_completion\(uuid, date, uuid\[\], text\) to authenticated;/i],
   ["Daily task reads exclude team-wide member access", (() => {
     const items = allSql.match(/create policy daily_task_items_read_scope[\s\S]*?create policy daily_task_items_insert_scope/i)?.[0] ?? "";

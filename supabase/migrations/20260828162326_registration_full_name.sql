@@ -62,4 +62,4 @@ end;
 $$;
 
 alter function private.provision_self_registered_profile() owner to postgres;
-revoke all on function private.provision_self_registered_profile() from public, anon, authenticated, service_role;
+revoke all on function private.provision_self_registered_profile() from public, anon, authenticated, service_role;;

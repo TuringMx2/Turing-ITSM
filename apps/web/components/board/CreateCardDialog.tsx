@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { createTask, type BoardTask, type ProjectMemberOption } from "@/app/actions/tasks";
 import type { TaskEstimateUnit } from "@/lib/task-estimate";
+import { AssigneePicker } from "./AssigneePicker";
 import { useModalFocus } from "./use-modal-focus";
 
 export function CreateCardDialog({
@@ -45,14 +46,6 @@ export function CreateCardDialog({
   }
 
   const dialogRef = useModalFocus<HTMLFormElement>(requestClose);
-
-  function toggleAssignee(userId: string) {
-    setAssigneeIds((current) =>
-      current.includes(userId)
-        ? current.filter((id) => id !== userId)
-        : [...current, userId],
-    );
-  }
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -148,12 +141,7 @@ export function CreateCardDialog({
           {members.length === 0 ? (
             <p className="muted small-text">No hay integrantes disponibles. La tarea puede quedar sin asignar.</p>
           ) : (
-            members.map((member) => (
-              <label key={member.id} className="board-check-option">
-                <input type="checkbox" name="assigneeIds" value={member.id} checked={assigneeIds.includes(member.id)} onChange={() => toggleAssignee(member.id)} />
-                <span>{member.full_name || member.email}</span>
-              </label>
-            ))
+            <AssigneePicker members={members} selectedIds={assigneeIds} onChange={setAssigneeIds} disabled={pending} />
           )}
         </fieldset>
 

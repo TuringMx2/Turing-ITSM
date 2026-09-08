@@ -81,6 +81,13 @@ export type DailyCompletionTeam = {
   completionSubmitted: boolean;
 };
 
+export type DailyResponsePrefill = {
+  teamId: string;
+  localDate: string;
+  completedWork: string;
+  carriedTasks: Array<{ id: string; title: string }>;
+};
+
 export type DailySubmissionRow = {
   id: string;
   user_id: string;
@@ -115,6 +122,7 @@ export type DailyAdminData = {
   pendingRuns: DailyRunRow[];
   runQuestions: DailyRunQuestionRow[];
   completionTeams: DailyCompletionTeam[];
+  responsePrefills: DailyResponsePrefill[];
 };
 
 export type DailyMemberData = {
@@ -131,6 +139,7 @@ export type DailyMemberData = {
   responseTeamOptions: DailyTeamRow[];
   selectedResponseTeam?: DailyResponseTeam;
   completionTeams: DailyCompletionTeam[];
+  responsePrefills: DailyResponsePrefill[];
 };
 
 const success = (message: string): DailyActionState => ({ status: "success", message });
@@ -142,6 +151,7 @@ function formFields(formData: FormData): Record<string, FormDataEntryValue> {
 
 function revalidateDaily(): void {
   revalidatePath("/workspace/daily");
+  revalidatePath("/workspace/dashboard");
 }
 
 function databaseMessage(
@@ -543,11 +553,12 @@ export async function submitDailyResponse(
   formData: FormData,
 ): Promise<DailyActionState> {
   const runIds = formData.getAll("runId").map(String);
+  const carriedTaskIds = formData.getAll("carriedTaskId").map(String);
   const localDate = formData.get("localDate");
   const answers = Array.from(formData.entries())
     .filter(([name]) => name.startsWith("answer:"))
     .map(([name, value]) => ({ questionId: name.slice("answer:".length), answer: String(value) }));
-  const parsed = submitDailyResponseSchema.safeParse({ runIds, localDate, answers });
+  const parsed = submitDailyResponseSchema.safeParse({ runIds, localDate, carriedTaskIds, answers });
   if (!parsed.success) {
     return failure(
       parsed.error.issues.some((issue) => issue.path[0] === "localDate")
@@ -567,7 +578,7 @@ export async function submitDailyResponse(
       answer: answer.answer.trim(),
     })),
     p_local_date: parsed.data.localDate,
-    p_planned_task_titles: [],
+    p_carried_task_ids: parsed.data.carriedTaskIds,
   });
   if (error) {
     const message = error.message.toLowerCase();
@@ -586,6 +597,12 @@ export async function submitDailyResponse(
     if (message.includes("exactly one team")) {
       return failure("Seleccioná un solo equipo antes de responder Daily.");
     }
+    if (message.includes("carried daily activity identifiers")) {
+      return failure("Las actividades trasladadas cambiaron. Actualizá la página antes de enviar.");
+    }
+    if (message.includes("planned-work question")) {
+      return failure("Las preguntas Daily cambiaron. Actualizá la página antes de enviar.");
+    }
     return failure("No se pudo registrar la respuesta Daily. Intentá nuevamente.");
   }
 
@@ -597,6 +614,108 @@ function countById(rows: Array<{ submission_id: string }>): Record<string, numbe
     counts[row.submission_id] = (counts[row.submission_id] ?? 0) + 1;
     return counts;
   }, {});
+}
+
+function responsePrefillKey(teamId: string, localDate: string): string {
+  return `${teamId}:${localDate}`;
+}
+
+async function loadDailyResponsePrefills(
+  supabase: SupabaseClient,
+  context: DailyContext,
+  pendingRuns: DailyRunRow[],
+  allRuns: DailyRunRow[],
+): Promise<{ data: DailyResponsePrefill[]; error?: string }> {
+  const eligibleRuns = Array.from(
+    new Map(pendingRuns.map((run) => [responsePrefillKey(run.team_id, run.local_date), run])).values(),
+  );
+  if (eligibleRuns.length === 0) return { data: [] };
+
+  const priorDateByTarget = new Map<string, string>();
+  for (const run of eligibleRuns) {
+    const previousRun = allRuns
+      .filter((candidate) => candidate.team_id === run.team_id && candidate.local_date < run.local_date)
+      .sort((left, right) => right.local_date.localeCompare(left.local_date) || right.scheduled_for.localeCompare(left.scheduled_for))[0];
+    if (previousRun) priorDateByTarget.set(responsePrefillKey(run.team_id, run.local_date), previousRun.local_date);
+  }
+
+  const teamIds = Array.from(new Set(eligibleRuns.map((run) => run.team_id)));
+  const localDates = Array.from(new Set([
+    ...eligibleRuns.map((run) => run.local_date),
+    ...priorDateByTarget.values(),
+  ]));
+  const [carriedResult, completionsResult] = await Promise.all([
+    supabase
+      .from("daily_task_items")
+      .select("id, team_id, logical_date, title, position")
+      .eq("tenant_id", context.tenantId)
+      .eq("user_id", context.userId)
+      .in("team_id", teamIds)
+      .in("logical_date", localDates)
+      .eq("status", "planned")
+      .not("carried_from_id", "is", null)
+      .order("position")
+      .order("created_at"),
+    supabase
+      .from("daily_task_completions")
+      .select("id, team_id, logical_date")
+      .eq("tenant_id", context.tenantId)
+      .eq("user_id", context.userId)
+      .in("team_id", teamIds)
+      .in("logical_date", localDates),
+  ]);
+  if (carriedResult.error || completionsResult.error) {
+    return { data: [], error: "No se pudieron cargar los datos previos de Daily." };
+  }
+
+  const completionRows = (completionsResult.data ?? []) as Array<{ id: string; team_id: string; logical_date: string }>;
+  const completionIds = completionRows.map((completion) => completion.id);
+  const completionItemsResult = completionIds.length
+    ? await supabase
+        .from("daily_task_completion_items")
+        .select("completion_id, title_snapshot, position")
+        .eq("tenant_id", context.tenantId)
+        .in("completion_id", completionIds)
+        .eq("outcome", "completed")
+        .order("position")
+    : { data: [], error: null };
+  if (completionItemsResult.error) {
+    return { data: [], error: "No se pudieron cargar las actividades completadas de Daily." };
+  }
+
+  const completionByTeamDate = new Map(
+    completionRows.map((completion) => [responsePrefillKey(String(completion.team_id), String(completion.logical_date)), String(completion.id)]),
+  );
+  const completedTitlesByCompletion = new Map<string, string[]>();
+  for (const item of completionItemsResult.data ?? []) {
+    const completionId = String(item.completion_id);
+    const titles = completedTitlesByCompletion.get(completionId) ?? [];
+    titles.push(String(item.title_snapshot));
+    completedTitlesByCompletion.set(completionId, titles);
+  }
+  const carriedByTarget = new Map<string, Array<{ id: string; title: string }>>();
+  for (const task of carriedResult.data ?? []) {
+    const key = responsePrefillKey(String(task.team_id), String(task.logical_date));
+    const carriedTasks = carriedByTarget.get(key) ?? [];
+    carriedTasks.push({ id: String(task.id), title: String(task.title) });
+    carriedByTarget.set(key, carriedTasks);
+  }
+
+  return {
+    data: eligibleRuns.map((run) => {
+      const targetKey = responsePrefillKey(run.team_id, run.local_date);
+      const priorDate = priorDateByTarget.get(targetKey);
+      const completionId = priorDate
+        ? completionByTeamDate.get(responsePrefillKey(run.team_id, priorDate))
+        : undefined;
+      return {
+        teamId: run.team_id,
+        localDate: run.local_date,
+        completedWork: completionId ? (completedTitlesByCompletion.get(completionId) ?? []).join("\n") : "",
+        carriedTasks: carriedByTarget.get(targetKey) ?? [],
+      };
+    }),
+  };
 }
 
 function dailyReportWindow(): { cutoff: string; now: string } {
@@ -851,6 +970,8 @@ export async function getDailyAdminWorkspace(): Promise<{
     (teamsResult.data ?? []) as DailyTeamRow[],
   );
   if (completionTeamsResult.error) return { error: completionTeamsResult.error };
+  const responsePrefillsResult = await loadDailyResponsePrefills(supabase, context, pendingRuns, allRuns);
+  if (responsePrefillsResult.error) return { error: responsePrefillsResult.error };
 
   return {
     data: {
@@ -871,6 +992,7 @@ export async function getDailyAdminWorkspace(): Promise<{
       pendingRuns,
       runQuestions,
       completionTeams: completionTeamsResult.data,
+      responsePrefills: responsePrefillsResult.data,
     },
   };
 }
@@ -939,6 +1061,8 @@ export async function getDailyMemberWorkspace(requestedTeamId?: string): Promise
     responseTeamContext.responseTeamOptions,
   );
   if (completionTeamsResult.error) return { error: completionTeamsResult.error };
+  const responsePrefillsResult = await loadDailyResponsePrefills(supabase, context, pendingRuns, allRuns);
+  if (responsePrefillsResult.error) return { error: responsePrefillsResult.error };
 
   return {
     data: {
@@ -958,6 +1082,7 @@ export async function getDailyMemberWorkspace(requestedTeamId?: string): Promise
       responseTeamOptions: responseTeamContext.responseTeamOptions,
       selectedResponseTeam: responseTeamContext.selectedResponseTeam,
       completionTeams: completionTeamsResult.data,
+      responsePrefills: responsePrefillsResult.data,
     },
   };
 }

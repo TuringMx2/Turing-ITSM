@@ -1,19 +1,18 @@
--- Separate the single current sprint from the project backlog without creating sprint history.
+-- Replace task due dates with optional effort estimates while preserving legacy records.
 
 alter table public.tasks
-  add column is_current_sprint boolean;
-
--- The pre-existing board represented the active sprint before this field existed.
-update public.tasks
-set is_current_sprint = true
-where is_current_sprint is null;
-
-alter table public.tasks
-  alter column is_current_sprint set not null;
-
-create index tasks_current_sprint_project_column_position_idx
-  on public.tasks (tenant_id, project_id, column_id, position)
-  where is_current_sprint;
+  add column estimate_quantity numeric(10,2),
+  add column estimate_unit text,
+  alter column due_date drop not null,
+  add constraint tasks_estimate_check check (
+    (estimate_quantity is null and estimate_unit is null)
+    or (
+      estimate_quantity is not null
+      and estimate_unit is not null
+      and estimate_quantity > 0
+      and estimate_unit in ('hours', 'days')
+    )
+  );
 
 create or replace function public.list_my_cards(
   p_limit integer default 10,
@@ -56,7 +55,6 @@ as $$
       on p.tenant_id = t.tenant_id
      and p.id = t.project_id
     where p.archived_at is null
-      and t.is_current_sprint
       and private.can_manage_project(t.tenant_id, t.project_id)
   )
   select jsonb_build_object(
@@ -98,4 +96,4 @@ $$;
 alter function public.list_my_cards(integer, integer) owner to postgres;
 revoke all on function public.list_my_cards(integer, integer)
   from public, anon, authenticated, service_role;
-grant execute on function public.list_my_cards(integer, integer) to authenticated;
+grant execute on function public.list_my_cards(integer, integer) to authenticated;;

@@ -179,7 +179,6 @@ begin
      and old.role in ('admin', 'superadmin')
      and old.status = 'active'
      and v_lifecycle_change then
-    -- Serialize every administrator-equivalent lifecycle change for this tenant.
     perform 1 from public.tenants where id = old.tenant_id for update;
     select count(*) into v_remaining_admins
     from public.profiles p
@@ -224,4 +223,4 @@ with check (
     and tenant_id = private.current_tenant_id()
     and created_by_user_id = (select auth.uid())
   )
-);
+);;

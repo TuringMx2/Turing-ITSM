@@ -414,9 +414,9 @@ begin
     limit 1;
 
     v_task_titles := array(
-      select btrim(regexp_replace(line, E'^\\s*[-•]\\s?', ''))
-      from regexp_split_to_table(coalesce(v_planned_answer, ''), E'\\r?\\n') as lines(line)
-      where btrim(regexp_replace(line, E'^\\s*[-•]\\s?', '')) <> ''
+      select btrim(regexp_replace(line, E'^\s*[-•]\s?', ''))
+      from regexp_split_to_table(coalesce(v_planned_answer, ''), E'\r?\n') as lines(line)
+      where btrim(regexp_replace(line, E'^\s*[-•]\s?', '')) <> ''
     );
   end if;
 
@@ -492,6 +492,9 @@ begin
   end if;
 
   return v_submission_id;
+exception
+  when no_data_found then
+    raise exception 'The Daily team has no active schedule with a valid IANA timezone';
 end;
 $$;
 
@@ -562,6 +565,13 @@ begin
   if v_local_now::time < time '16:00' then
     raise exception 'Daily completion is available after the team local 16:00 cutoff';
   end if;
+
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(
+      v_tenant_id::text || ':' || p_team_id::text || ':' || p_logical_date::text || ':' || v_user_id::text,
+      0
+    )
+  );
 
   select count(*) into v_completed_count from unnest(v_completed_ids);
   select count(distinct completed_id) into v_distinct_completed_count
@@ -733,7 +743,7 @@ with check (
   and tenant_id = private.current_tenant_id()
   and user_id = (select auth.uid())
   and status = 'planned'
-   and (private.is_tenant_admin(tenant_id) or private.is_team_member(tenant_id, team_id))
+  and (private.is_tenant_admin(tenant_id) or private.is_team_member(tenant_id, team_id))
   and exists (
     select 1
     from public.team_daily_schedules s
@@ -773,4 +783,4 @@ grant select on public.daily_task_completion_items to authenticated;
 
 revoke insert, update, delete on public.daily_task_items from authenticated;
 revoke insert, update, delete on public.daily_task_completions from authenticated;
-revoke insert, update, delete on public.daily_task_completion_items from authenticated;
+revoke insert, update, delete on public.daily_task_completion_items from authenticated;;

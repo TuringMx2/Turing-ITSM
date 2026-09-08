@@ -23,7 +23,6 @@ create table public.daily_questions (
   unique (tenant_id, id),
   unique (tenant_id, question_text)
 );
-
 insert into public.daily_questions (tenant_id, question_text)
 select t.id, defaults.question_text
 from public.tenants t
@@ -32,7 +31,6 @@ cross join (values
   ('What will you work on next?'),
   ('Are there any blockers or risks?')
 ) as defaults(question_text);
-
 create function private.seed_default_daily_questions()
 returns trigger
 language plpgsql
@@ -47,14 +45,11 @@ begin
   return new;
 end;
 $$;
-
 alter function private.seed_default_daily_questions() owner to postgres;
 revoke execute on function private.seed_default_daily_questions() from public;
-
 create trigger seed_tenant_daily_questions_after_insert
 after insert on public.tenants
 for each row execute function private.seed_default_daily_questions();
-
 create table public.team_daily_schedules (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null,
@@ -87,7 +82,6 @@ create table public.team_daily_schedules (
   unique (tenant_id, id),
   unique (tenant_id, team_id, id)
 );
-
 create table public.team_daily_questions (
   tenant_id uuid not null,
   team_id uuid not null,
@@ -112,7 +106,6 @@ create table public.team_daily_questions (
   unique (team_id, position),
   unique (tenant_id, team_id, question_id)
 );
-
 create table public.daily_runs (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null,
@@ -137,7 +130,6 @@ create table public.daily_runs (
   unique (tenant_id, id),
   unique (tenant_id, team_id, id)
 );
-
 create table public.daily_run_questions (
   tenant_id uuid not null,
   run_id uuid not null,
@@ -159,7 +151,6 @@ create table public.daily_run_questions (
   unique (run_id, position),
   unique (tenant_id, run_id, question_id)
 );
-
 create table public.daily_submissions (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.tenants(id) on delete restrict,
@@ -172,7 +163,6 @@ create table public.daily_submissions (
   unique (tenant_id, id),
   unique (tenant_id, id, user_id)
 );
-
 create table public.daily_submission_runs (
   tenant_id uuid not null,
   submission_id uuid not null,
@@ -193,7 +183,6 @@ create table public.daily_submission_runs (
   unique (run_id, user_id),
   unique (tenant_id, submission_id, run_id)
 );
-
 create table public.daily_submission_answers (
   tenant_id uuid not null,
   submission_id uuid not null,
@@ -216,7 +205,6 @@ create table public.daily_submission_answers (
   ),
   unique (tenant_id, submission_id, question_id)
 );
-
 create function private.validate_daily_schedule()
 returns trigger
 language plpgsql
@@ -238,7 +226,6 @@ begin
   return new;
 end;
 $$;
-
 create function private.validate_team_daily_question()
 returns trigger
 language plpgsql
@@ -258,7 +245,6 @@ begin
   return new;
 end;
 $$;
-
 create function private.apply_question_deactivation()
 returns trigger
 language plpgsql
@@ -275,7 +261,6 @@ begin
   return new;
 end;
 $$;
-
 create function private.prevent_daily_question_delete()
 returns trigger
 language plpgsql
@@ -285,7 +270,6 @@ begin
   raise exception 'Daily questions must be soft-deactivated, not deleted';
 end;
 $$;
-
 create function private.prepare_daily_run()
 returns trigger
 language plpgsql
@@ -318,7 +302,6 @@ exception
     raise exception 'A Daily run requires the active schedule for its team';
 end;
 $$;
-
 create function private.snapshot_daily_run_questions()
 returns trigger
 language plpgsql
@@ -347,7 +330,6 @@ begin
   return new;
 end;
 $$;
-
 create function private.prevent_immutable_daily_change()
 returns trigger
 language plpgsql
@@ -357,7 +339,6 @@ begin
   raise exception 'Submitted Daily responses and their evidence are immutable';
 end;
 $$;
-
 create function private.prevent_daily_run_change()
 returns trigger
 language plpgsql
@@ -370,59 +351,45 @@ begin
   return new;
 end;
 $$;
-
 create trigger validate_team_daily_schedule
 before insert or update on public.team_daily_schedules
 for each row execute function private.validate_daily_schedule();
-
 create trigger set_team_daily_schedules_updated_at
 before update on public.team_daily_schedules
 for each row execute function private.set_updated_at();
-
 create trigger validate_team_daily_question_selection
 before insert or update on public.team_daily_questions
 for each row execute function private.validate_team_daily_question();
-
 create trigger apply_daily_question_deactivation
 before update of is_active on public.daily_questions
 for each row execute function private.apply_question_deactivation();
-
 create trigger prevent_daily_question_delete
 before delete on public.daily_questions
 for each row execute function private.prevent_daily_question_delete();
-
 create trigger set_daily_questions_updated_at
 before update on public.daily_questions
 for each row execute function private.set_updated_at();
-
 create trigger prepare_daily_run_before_insert
 before insert on public.daily_runs
 for each row execute function private.prepare_daily_run();
-
 create trigger snapshot_daily_run_questions_after_insert
 after insert on public.daily_runs
 for each row execute function private.snapshot_daily_run_questions();
-
 create trigger prevent_daily_run_change
 before update on public.daily_runs
 for each row execute function private.prevent_daily_run_change();
-
 create trigger prevent_daily_run_question_change
 before update or delete on public.daily_run_questions
 for each row execute function private.prevent_immutable_daily_change();
-
 create trigger prevent_daily_submission_change
 before update or delete on public.daily_submissions
 for each row execute function private.prevent_immutable_daily_change();
-
 create trigger prevent_daily_submission_run_change
 before update or delete on public.daily_submission_runs
 for each row execute function private.prevent_immutable_daily_change();
-
 create trigger prevent_daily_submission_answer_change
 before update or delete on public.daily_submission_answers
 for each row execute function private.prevent_immutable_daily_change();
-
 revoke execute on function private.validate_daily_schedule() from public;
 revoke execute on function private.validate_team_daily_question() from public;
 revoke execute on function private.apply_question_deactivation() from public;
@@ -431,7 +398,6 @@ revoke execute on function private.prepare_daily_run() from public;
 revoke execute on function private.snapshot_daily_run_questions() from public;
 revoke execute on function private.prevent_immutable_daily_change() from public;
 revoke execute on function private.prevent_daily_run_change() from public;
-
 create function private.can_read_daily_submission(p_submission_id uuid)
 returns boolean
 language sql
@@ -457,7 +423,6 @@ as $$
         and private.is_team_member(sr.tenant_id, sr.team_id)
     )
 $$;
-
 create function private.can_read_daily_answer(
   p_submission_id uuid,
   p_question_id uuid
@@ -489,14 +454,12 @@ as $$
         and private.is_team_member(sr.tenant_id, sr.team_id)
     )
 $$;
-
 alter function private.can_read_daily_submission(uuid) owner to postgres;
 alter function private.can_read_daily_answer(uuid, uuid) owner to postgres;
 revoke execute on function private.can_read_daily_submission(uuid) from public;
 revoke execute on function private.can_read_daily_answer(uuid, uuid) from public;
 grant execute on function private.can_read_daily_submission(uuid) to authenticated;
 grant execute on function private.can_read_daily_answer(uuid, uuid) to authenticated;
-
 create function public.submit_daily_response(
   p_run_ids uuid[],
   p_answers jsonb
@@ -663,18 +626,15 @@ begin
   return v_submission_id;
 end;
 $$;
-
 alter function public.submit_daily_response(uuid[], jsonb) owner to postgres;
 revoke execute on function public.submit_daily_response(uuid[], jsonb) from public, anon, authenticated, service_role;
 grant execute on function public.submit_daily_response(uuid[], jsonb) to authenticated;
-
 create index team_daily_questions_question_idx on public.team_daily_questions (question_id);
 create index daily_runs_team_scheduled_idx on public.daily_runs (team_id, scheduled_for desc);
 create index daily_runs_due_idx on public.daily_runs (due_at);
 create index daily_submission_runs_user_idx on public.daily_submission_runs (user_id, linked_at desc);
 create index daily_submission_runs_team_idx on public.daily_submission_runs (team_id, run_id);
 create index daily_submission_answers_question_idx on public.daily_submission_answers (question_id);
-
 alter table public.daily_questions enable row level security;
 alter table public.team_daily_schedules enable row level security;
 alter table public.team_daily_questions enable row level security;
@@ -683,94 +643,78 @@ alter table public.daily_run_questions enable row level security;
 alter table public.daily_submissions enable row level security;
 alter table public.daily_submission_runs enable row level security;
 alter table public.daily_submission_answers enable row level security;
-
 create policy daily_questions_read_scope on public.daily_questions
 for select to authenticated
 using (
   tenant_id = private.current_tenant_id()
   and (is_active or private.is_tenant_admin(tenant_id))
 );
-
 create policy daily_questions_admin_insert on public.daily_questions
 for insert to authenticated
 with check (
   private.is_tenant_admin(tenant_id)
   and created_by = (select auth.uid())
 );
-
 create policy daily_questions_admin_update on public.daily_questions
 for update to authenticated
 using (private.is_tenant_admin(tenant_id))
 with check (private.is_tenant_admin(tenant_id));
-
 create policy team_daily_schedules_read_scope on public.team_daily_schedules
 for select to authenticated
 using (
   private.is_tenant_admin(tenant_id)
   or private.is_team_member(tenant_id, team_id)
 );
-
 create policy team_daily_schedules_admin_insert on public.team_daily_schedules
 for insert to authenticated
 with check (
   private.is_tenant_admin(tenant_id)
   and created_by = (select auth.uid())
 );
-
 create policy team_daily_schedules_admin_update on public.team_daily_schedules
 for update to authenticated
 using (private.is_tenant_admin(tenant_id))
 with check (private.is_tenant_admin(tenant_id));
-
 create policy team_daily_schedules_admin_delete on public.team_daily_schedules
 for delete to authenticated
 using (private.is_tenant_admin(tenant_id));
-
 create policy team_daily_questions_read_scope on public.team_daily_questions
 for select to authenticated
 using (
   private.is_tenant_admin(tenant_id)
   or private.is_team_member(tenant_id, team_id)
 );
-
 create policy team_daily_questions_admin_insert on public.team_daily_questions
 for insert to authenticated
 with check (
   private.is_tenant_admin(tenant_id)
   and selected_by = (select auth.uid())
 );
-
 create policy team_daily_questions_admin_update on public.team_daily_questions
 for update to authenticated
 using (private.is_tenant_admin(tenant_id))
 with check (private.is_tenant_admin(tenant_id));
-
 create policy team_daily_questions_admin_delete on public.team_daily_questions
 for delete to authenticated
 using (private.is_tenant_admin(tenant_id));
-
 create policy daily_runs_read_scope on public.daily_runs
 for select to authenticated
 using (
   private.is_tenant_admin(tenant_id)
   or private.is_team_member(tenant_id, team_id)
 );
-
 create policy daily_runs_admin_insert on public.daily_runs
 for insert to authenticated
 with check (private.is_tenant_admin(tenant_id));
-
 create policy daily_run_questions_read_scope on public.daily_run_questions
 for select to authenticated
 using (
   private.is_tenant_admin(tenant_id)
   or private.is_team_member(tenant_id, team_id)
 );
-
 create policy daily_submissions_read_scope on public.daily_submissions
 for select to authenticated
 using (private.can_read_daily_submission(id));
-
 create policy daily_submission_runs_read_scope on public.daily_submission_runs
 for select to authenticated
 using (
@@ -778,11 +722,9 @@ using (
   or user_id = (select auth.uid())
   or private.is_team_member(tenant_id, team_id)
 );
-
 create policy daily_submission_answers_read_scope on public.daily_submission_answers
 for select to authenticated
 using (private.can_read_daily_answer(submission_id, question_id));
-
 grant select, insert, update on public.daily_questions to authenticated;
 grant select, insert, update, delete on public.team_daily_schedules to authenticated;
 grant select, insert, update, delete on public.team_daily_questions to authenticated;

@@ -1,20 +1,17 @@
 export const DAILY_PLANNED_WORK_KEY = "planned_work" as const;
+export const DAILY_COMPLETED_WORK_KEY = "completed_work" as const;
 export const DAILY_BLOCKERS_KEY = "blockers" as const;
-
-export function parseDailyTaskLines(value: string): string[] {
-  return value
-    .split(/\r?\n/)
-    .map((line) => line.replace(/^\s*(?:[-•])\s?/, "").trim())
-    .filter(Boolean);
-}
 
 export function isDailyPlannedWorkQuestion(
   semanticKey: string | null | undefined,
-  questionText?: string,
 ): boolean {
-  if (semanticKey === DAILY_PLANNED_WORK_KEY) return true;
-  const normalized = questionText?.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[¿¡]/g, "").toLowerCase().trim();
-  return normalized === "what will you work on next?" || normalized === "en que trabajaras hoy?";
+  return semanticKey === DAILY_PLANNED_WORK_KEY;
+}
+
+export function isDailyCompletedWorkQuestion(
+  semanticKey: string | null | undefined,
+): boolean {
+  return semanticKey === DAILY_COMPLETED_WORK_KEY;
 }
 
 export function isDailyBlockerQuestion(

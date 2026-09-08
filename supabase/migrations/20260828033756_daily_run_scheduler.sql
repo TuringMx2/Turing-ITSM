@@ -31,8 +31,6 @@ begin
 end;
 $$;
 
--- Keep the existing trigger as the single owner of derived run fields. This
--- replacement only aligns its weekday comparison with the stored contract.
 create or replace function private.prepare_daily_run()
 returns trigger
 language plpgsql
@@ -105,8 +103,6 @@ begin
     order by s.id
   loop
     begin
-      -- AT TIME ZONE uses the schedule's stored IANA zone. An invalid zone or
-      -- a nonexistent DST wall time is isolated to this schedule below.
       v_local_now := v_now at time zone v_schedule.timezone_name;
       v_local_weekday := extract(isodow from v_local_now)::smallint;
 
@@ -118,10 +114,6 @@ begin
       v_local_occurrence := v_local_now::date + v_schedule.local_time;
       v_scheduled_for := v_local_occurrence at time zone v_schedule.timezone_name;
 
-      -- PostgreSQL normalizes nonexistent DST wall times. Reject those values
-      -- instead of creating a run at a different local time. The timestamp
-      -- comparison also prevents a selected fallback occurrence from being
-      -- created before its actual instant has arrived.
       if (v_scheduled_for at time zone v_schedule.timezone_name)
            is distinct from v_local_occurrence
          or v_scheduled_for > v_now then
@@ -136,8 +128,6 @@ begin
       v_created_count := v_created_count + v_inserted_count;
     exception
       when others then
-        -- A malformed legacy row or a concurrent schedule change must not stop
-        -- other tenants' schedules. No row data or error text is logged.
         raise warning 'Daily run scheduler skipped one invalid schedule';
     end;
   end loop;
@@ -168,4 +158,4 @@ begin
     );
   end if;
 end;
-$$;
+$$;;

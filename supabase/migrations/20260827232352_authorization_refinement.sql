@@ -45,12 +45,21 @@ begin
     raise exception 'A profile cannot be moved between tenants by provisioning';
   end if;
 
-  -- This marker is set only inside this validated provisioning path. The
-  -- profile trigger rejects direct authenticated role updates.
   perform pg_catalog.set_config('app.provision_profile', 'true', true);
 
-  insert into public.profiles (id, tenant_id, role, full_name, email)
-  values (p_user_id, p_tenant_id, p_role, p_full_name, p_email)
+  insert into public.profiles (
+    id,
+    tenant_id,
+    role,
+    full_name,
+    email
+  ) values (
+    p_user_id,
+    p_tenant_id,
+    p_role,
+    p_full_name,
+    p_email
+  )
   on conflict (id) do update set
     tenant_id = excluded.tenant_id,
     role = excluded.role,
@@ -109,7 +118,6 @@ begin
      and old.role in ('admin', 'superadmin')
      and old.status = 'active'
      and v_lifecycle_change then
-    -- Serialize every administrator-equivalent lifecycle change for this tenant.
     perform 1 from public.tenants where id = old.tenant_id for update;
     select count(*) into v_remaining_admins
     from public.profiles p
@@ -142,7 +150,7 @@ revoke all on function public.provision_profile(uuid, public.app_role, uuid, tex
 grant execute on function private.is_tenant_superadmin(uuid) to authenticated;
 grant execute on function public.provision_profile(uuid, public.app_role, uuid, text, text) to authenticated;
 
-drop policy profiles_admin_insert on public.profiles;
+drop policy if exists profiles_admin_insert on public.profiles;
 create policy profiles_admin_insert on public.profiles
 for insert to authenticated
 with check (
@@ -153,4 +161,4 @@ with check (
 drop trigger if exists prevent_unauthorized_superadmin_assignment on public.profiles;
 create trigger prevent_unauthorized_superadmin_assignment
 before insert or update of role on public.profiles
-for each row execute function private.prevent_unauthorized_superadmin_assignment();
+for each row execute function private.prevent_unauthorized_superadmin_assignment();;
